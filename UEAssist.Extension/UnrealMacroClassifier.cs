@@ -4,7 +4,6 @@ using Microsoft.VisualStudio.Utilities;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
-using System.Windows.Media;
 using UEAssist.Core;
 
 namespace UEAssist.Extension
@@ -15,22 +14,8 @@ namespace UEAssist.Extension
 
         [Export(typeof(ClassificationTypeDefinition))]
         [Name(Name)]
+        [BaseDefinition("C++ Macros")]
         internal static ClassificationTypeDefinition TypeDefinition = null;
-
-        [Export(typeof(EditorFormatDefinition))]
-        [ClassificationType(ClassificationTypeNames = Name)]
-        [Name(Name)]
-        [UserVisible(true)]
-        [Order(After = Priority.Default)]
-        internal sealed class FormatDefinition : ClassificationFormatDefinition
-        {
-            public FormatDefinition()
-            {
-                DisplayName = "UEAssist Unreal Macro";
-                ForegroundColor = Color.FromRgb(86, 156, 214);
-                IsBold = true;
-            }
-        }
     }
 
     [Export(typeof(IClassifierProvider))]

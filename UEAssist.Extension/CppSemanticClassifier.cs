@@ -4,7 +4,6 @@ using Microsoft.VisualStudio.Utilities;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
-using System.Windows.Media;
 using UEAssist.Core;
 
 namespace UEAssist.Extension
@@ -16,39 +15,13 @@ namespace UEAssist.Extension
 
         [Export(typeof(ClassificationTypeDefinition))]
         [Name(TypeName)]
+        [BaseDefinition("C++ User Types")]
         internal static ClassificationTypeDefinition TypeDefinition = null;
 
         [Export(typeof(ClassificationTypeDefinition))]
         [Name(VariableName)]
+        [BaseDefinition("C++ Variables")]
         internal static ClassificationTypeDefinition VariableDefinition = null;
-
-        [Export(typeof(EditorFormatDefinition))]
-        [ClassificationType(ClassificationTypeNames = TypeName)]
-        [Name(TypeName)]
-        [UserVisible(true)]
-        [Order(After = Priority.Default)]
-        internal sealed class TypeFormat : ClassificationFormatDefinition
-        {
-            public TypeFormat()
-            {
-                DisplayName = "UEAssist C++ Type";
-                ForegroundColor = Color.FromRgb(78, 201, 176);
-            }
-        }
-
-        [Export(typeof(EditorFormatDefinition))]
-        [ClassificationType(ClassificationTypeNames = VariableName)]
-        [Name(VariableName)]
-        [UserVisible(true)]
-        [Order(After = Priority.Default)]
-        internal sealed class VariableFormat : ClassificationFormatDefinition
-        {
-            public VariableFormat()
-            {
-                DisplayName = "UEAssist C++ Variable";
-                ForegroundColor = Color.FromRgb(156, 220, 254);
-            }
-        }
     }
 
     [Export(typeof(IClassifierProvider))]
