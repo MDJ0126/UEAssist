@@ -4,10 +4,34 @@ using Microsoft.VisualStudio.Utilities;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
+using System.Windows.Media;
 using UEAssist.Core;
 
 namespace UEAssist.Extension
 {
+    internal static class UnrealMacroClassification
+    {
+        public const string Name = "UEAssist Unreal Macro";
+
+        [Export(typeof(ClassificationTypeDefinition))]
+        [Name(Name)]
+        internal static ClassificationTypeDefinition TypeDefinition = null;
+
+        [Export(typeof(EditorFormatDefinition))]
+        [ClassificationType(ClassificationTypeNames = Name)]
+        [Name(Name)]
+        [UserVisible(true)]
+        [Order(After = Priority.Default)]
+        internal sealed class FormatDefinition : ClassificationFormatDefinition
+        {
+            public FormatDefinition()
+            {
+                DisplayName = "UEAssist Unreal Macro";
+                ForegroundColor = Color.FromRgb(189, 99, 197);
+            }
+        }
+    }
+
     [Export(typeof(IClassifierProvider))]
     [ContentType("C/C++")]
     internal sealed class UnrealMacroClassifierProvider : IClassifierProvider
@@ -15,12 +39,16 @@ namespace UEAssist.Extension
         [Import]
         internal IClassificationTypeRegistryService ClassificationRegistry = null;
 
+        [Import]
+        internal CppColorSynchronizer ColorSynchronizer = null;
+
         public IClassifier GetClassifier(ITextBuffer textBuffer)
         {
+            ColorSynchronizer.Synchronize();
             return textBuffer.Properties.GetOrCreateSingletonProperty(
                 () => new UnrealMacroClassifier(
                     textBuffer,
-                    ClassificationRegistry.GetClassificationType("C++ Macros")));
+                    ClassificationRegistry.GetClassificationType(UnrealMacroClassification.Name)));
         }
     }
 
