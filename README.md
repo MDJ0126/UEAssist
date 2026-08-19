@@ -1,6 +1,6 @@
-# UEAssist
+# UEAssist for Visual Studio
 
-Visual Studio에서 Unreal Engine C++ 코드를 빠르게 표시하고 탐색하기 위한 무료 오픈소스 확장입니다.
+**Visual Studio용 Unreal Engine C++ 생산성 확장입니다.** IntelliSense가 준비되는 동안 Unreal 매크로와 의미 색상을 먼저 표시하고, 빠른 정의 탐색을 제공합니다.
 
 [![UEAssist 다운로드](https://img.shields.io/badge/UEAssist-VSIX%20다운로드-7B68EE?style=for-the-badge&logo=visualstudio)](https://github.com/MDJ0126/UEAssist/raw/refs/heads/main/UEAssist.vsix)
 
@@ -52,3 +52,5 @@ UEAssist는 아직 IntelliSense 전체를 대체하지 않습니다. 자동완�
 ## 라이선스
 
 [MIT License](./LICENSE)
+
+UEAssist는 독립 프로젝트이며 Microsoft 또는 Epic Games와 제휴하거나 공식 승인을 받은 제품이 아닙니다.
