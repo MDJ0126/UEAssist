@@ -41,6 +41,10 @@ namespace UEAssist.Core
             @"\bclass\s+(?:\w+_API\s+)?[A-Za-z_]\w*\s*:\s*(?:public|protected|private)\s+[A-Za-z_]\w*",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex GeneratedSuperUsagePattern = new Regex(
+            @"\bSuper\s*::",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex VariableDeclarationPattern = new Regex(
             @"\b(?:const\s+)?(?:auto|bool|char|short|int|long|float|double|int\d+|uint\d+|[AUFTEI][A-Z]\w*|[A-Za-z_]\w*\s*<[^;{}()]+>)\s*[*&]?\s*(?<name>[a-zA-Z_]\w*)\s*(?=[=;,\)\[])" ,
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -62,9 +66,10 @@ namespace UEAssist.Core
                 }
             }
 
-            if (UnrealClassInheritancePattern.IsMatch(text)
-                && (text.IndexOf("GENERATED_BODY", StringComparison.Ordinal) >= 0
-                    || text.IndexOf("UCLASS", StringComparison.Ordinal) >= 0))
+            if (GeneratedSuperUsagePattern.IsMatch(text)
+                || (UnrealClassInheritancePattern.IsMatch(text)
+                    && (text.IndexOf("GENERATED_BODY", StringComparison.Ordinal) >= 0
+                        || text.IndexOf("UCLASS", StringComparison.Ordinal) >= 0)))
             {
                 typeNames.Add("Super");
             }

@@ -36,5 +36,15 @@ namespace UEAssist.Core.Tests
 
             Assert.Contains(tokens, token => token.Name == "Super" && token.Kind == SemanticTokenKind.Type);
         }
+
+        [Fact]
+        public void Parse_ClassifiesSuperUsageInCppWithoutHeaderContext()
+        {
+            const string code = "void AR1Actor::BeginPlay() { Super::BeginPlay(); }";
+
+            var tokens = CppSemanticParser.Parse(code);
+
+            Assert.Contains(tokens, token => token.Name == "Super" && token.Kind == SemanticTokenKind.Type);
+        }
     }
 }

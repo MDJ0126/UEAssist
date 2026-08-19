@@ -15,6 +15,7 @@ x86/
 
 # Visual Studio extension output
 *.vsix
+!UEAssist.vsix
 *.pkgdef
 *.pdb
 
