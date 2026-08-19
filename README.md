@@ -14,7 +14,7 @@
 
 - Unreal 프로젝트 자동 감지
 - `UCLASS`, `UPROPERTY`, `GENERATED_BODY`, `<모듈명>_API` 등 Unreal 매크로 즉시 표시
-- 클래스·타입·변수 및 `Super` 의미 색상 표시
+- 클래스·타입·변수·함수 및 `Super` 의미 색상 즉시 표시
 - Visual Studio C++ 사용자 색상 설정과 자동 동기화
 - 초기 IntelliSense 오진 밑줄 억제
 - 빠른 정의 탐색

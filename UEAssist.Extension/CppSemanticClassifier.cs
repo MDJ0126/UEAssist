@@ -13,6 +13,7 @@ namespace UEAssist.Extension
     {
         public const string TypeName = "UEAssist C++ Type";
         public const string VariableName = "UEAssist C++ Variable";
+        public const string FunctionName = "UEAssist C++ Function";
 
         [Export(typeof(ClassificationTypeDefinition))]
         [Name(TypeName)]
@@ -21,6 +22,10 @@ namespace UEAssist.Extension
         [Export(typeof(ClassificationTypeDefinition))]
         [Name(VariableName)]
         internal static ClassificationTypeDefinition VariableDefinition = null;
+
+        [Export(typeof(ClassificationTypeDefinition))]
+        [Name(FunctionName)]
+        internal static ClassificationTypeDefinition FunctionDefinition = null;
 
         [Export(typeof(EditorFormatDefinition))]
         [ClassificationType(ClassificationTypeNames = TypeName)]
@@ -49,6 +54,20 @@ namespace UEAssist.Extension
                 ForegroundColor = Color.FromRgb(156, 220, 254);
             }
         }
+
+        [Export(typeof(EditorFormatDefinition))]
+        [ClassificationType(ClassificationTypeNames = FunctionName)]
+        [Name(FunctionName)]
+        [UserVisible(true)]
+        [Order(After = Priority.Default)]
+        internal sealed class FunctionFormat : ClassificationFormatDefinition
+        {
+            public FunctionFormat()
+            {
+                DisplayName = "UEAssist C++ Function";
+                ForegroundColor = Color.FromRgb(220, 220, 170);
+            }
+        }
     }
 
     [Export(typeof(IClassifierProvider))]
@@ -68,7 +87,8 @@ namespace UEAssist.Extension
                 () => new CppSemanticClassifier(
                     textBuffer,
                     Registry.GetClassificationType(CppSemanticClassification.TypeName),
-                    Registry.GetClassificationType(CppSemanticClassification.VariableName)));
+                    Registry.GetClassificationType(CppSemanticClassification.VariableName),
+                    Registry.GetClassificationType(CppSemanticClassification.FunctionName)));
         }
     }
 
@@ -77,14 +97,16 @@ namespace UEAssist.Extension
         private readonly ITextBuffer textBuffer;
         private readonly IClassificationType typeClassification;
         private readonly IClassificationType variableClassification;
+        private readonly IClassificationType functionClassification;
         private ITextSnapshot cachedSnapshot;
         private IReadOnlyList<SemanticToken> cachedTokens = Array.Empty<SemanticToken>();
 
-        public CppSemanticClassifier(ITextBuffer textBuffer, IClassificationType typeClassification, IClassificationType variableClassification)
+        public CppSemanticClassifier(ITextBuffer textBuffer, IClassificationType typeClassification, IClassificationType variableClassification, IClassificationType functionClassification)
         {
             this.textBuffer = textBuffer;
             this.typeClassification = typeClassification;
             this.variableClassification = variableClassification;
+            this.functionClassification = functionClassification;
             textBuffer.Changed += OnBufferChanged;
         }
 
@@ -101,7 +123,11 @@ namespace UEAssist.Extension
                     continue;
                 }
 
-                var classification = token.Kind == SemanticTokenKind.Type ? typeClassification : variableClassification;
+                var classification = token.Kind == SemanticTokenKind.Type
+                    ? typeClassification
+                    : token.Kind == SemanticTokenKind.Function
+                        ? functionClassification
+                        : variableClassification;
                 results.Add(new ClassificationSpan(new SnapshotSpan(span.Snapshot, token.Start, token.Length), classification));
             }
 

@@ -35,6 +35,7 @@ namespace UEAssist.Extension
                 CopyWhenAvailable("C++ Macros", UnrealMacroClassification.Name);
                 CopyWhenAvailable("C++ User Types", CppSemanticClassification.TypeName);
                 CopyWhenAvailable("C++ Variables", CppSemanticClassification.VariableName);
+                CopyWhenAvailable("C++ Functions", CppSemanticClassification.FunctionName);
             }
             finally
             {

@@ -8,7 +8,8 @@ namespace UEAssist.Core
     public enum SemanticTokenKind
     {
         Type,
-        Variable
+        Variable,
+        Function
     }
 
     public sealed class SemanticToken
@@ -49,6 +50,17 @@ namespace UEAssist.Core
             @"\b(?:const\s+)?(?:auto|bool|char|short|int|long|float|double|int\d+|uint\d+|[AUFTEI][A-Z]\w*|[A-Za-z_]\w*\s*<[^;{}()]+>)\s*[*&]?\s*(?<name>[a-zA-Z_]\w*)\s*(?=[=;,\)\[])" ,
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex FunctionUsagePattern = new Regex(
+            @"\b(?<name>[A-Za-z_]\w*)\s*(?=\()",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly HashSet<string> NonFunctionKeywords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "alignas", "alignof", "catch", "decltype", "delete", "for", "if", "new",
+            "noexcept", "requires", "return", "sizeof", "static_assert", "switch", "throw",
+            "typeid", "while"
+        };
+
         public static IReadOnlyList<SemanticToken> Parse(string text)
         {
             if (string.IsNullOrEmpty(text))
@@ -80,6 +92,7 @@ namespace UEAssist.Core
             var tokens = new List<SemanticToken>();
             AddOccurrences(text, typeNames, SemanticTokenKind.Type, tokens);
             AddOccurrences(text, variableNames, SemanticTokenKind.Variable, tokens);
+            AddFunctionOccurrences(text, tokens);
             return tokens.OrderBy(token => token.Start).ToArray();
         }
 
@@ -102,6 +115,27 @@ namespace UEAssist.Core
                 {
                     tokens.Add(new SemanticToken(name, match.Index, match.Length, kind));
                 }
+            }
+        }
+
+        private static void AddFunctionOccurrences(string text, ICollection<SemanticToken> tokens)
+        {
+            foreach (Match match in FunctionUsagePattern.Matches(text))
+            {
+                var group = match.Groups["name"];
+                var name = group.Value;
+                if (NonFunctionKeywords.Contains(name) || IsUnrealMacro(name))
+                {
+                    continue;
+                }
+
+                var overlapping = tokens.FirstOrDefault(token => token.Start == group.Index && token.Length == group.Length);
+                if (overlapping != null)
+                {
+                    tokens.Remove(overlapping);
+                }
+
+                tokens.Add(new SemanticToken(name, group.Index, group.Length, SemanticTokenKind.Function));
             }
         }
 
