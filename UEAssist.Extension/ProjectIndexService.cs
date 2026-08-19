@@ -16,28 +16,38 @@ namespace UEAssist.Extension
     {
         private readonly object gate = new object();
         private Task buildTask;
+        private string initializedProjectRoot;
 
         public PersistentSymbolIndex Index { get; } = new PersistentSymbolIndex();
         public bool IsBuilding { get; private set; }
         public string LastError { get; private set; }
         public event EventHandler IndexUpdated;
+        public event EventHandler IntelliSenseAvailabilityChanged;
+        public bool IntelliSenseReady { get; private set; }
 
         public void Initialize(string unrealProjectPath)
         {
             if (string.IsNullOrWhiteSpace(unrealProjectPath)) return;
             var projectRoot = Path.GetDirectoryName(unrealProjectPath);
             var cachePath = GetCachePath(projectRoot);
-            var cacheLoaded = Index.Load(cachePath);
-            if (cacheLoaded && IsCacheCurrent(projectRoot, cachePath)) return;
 
             lock (gate)
             {
+                if (string.Equals(initializedProjectRoot, projectRoot, StringComparison.OrdinalIgnoreCase)) return;
                 if (buildTask != null && !buildTask.IsCompleted) return;
+                initializedProjectRoot = projectRoot;
+                IntelliSenseReady = false;
+                var cacheLoaded = Index.Load(cachePath);
                 IsBuilding = true;
                 buildTask = Task.Run(() =>
                 {
                     try
                     {
+                        if (cacheLoaded && IsCacheCurrent(projectRoot, cachePath))
+                        {
+                            LastError = null;
+                            return;
+                        }
                         Index.Build(projectRoot, FindEngineRoot());
                         Index.Save(cachePath);
                         LastError = null;
@@ -53,6 +63,13 @@ namespace UEAssist.Extension
                     }
                 });
             }
+        }
+
+        public void MarkIntelliSenseReady()
+        {
+            if (IntelliSenseReady) return;
+            IntelliSenseReady = true;
+            IntelliSenseAvailabilityChanged?.Invoke(this, EventArgs.Empty);
         }
 
         public void Refresh(string unrealProjectPath)

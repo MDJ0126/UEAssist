@@ -17,18 +17,23 @@ namespace UEAssist.Extension
         private const int ParentSearchLimit = 12;
 
         private readonly DTE2 dte;
+        private readonly ProjectIndexService indexService;
         private readonly SolutionEvents solutionEvents;
         private readonly DocumentEvents documentEvents;
+        private bool? originalDisableSquiggles;
+        private bool settingChanged;
 
-        private IntelliSenseSquiggleController(DTE2 dte)
+        private IntelliSenseSquiggleController(DTE2 dte, ProjectIndexService indexService)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             this.dte = dte;
+            this.indexService = indexService;
             solutionEvents = dte.Events.SolutionEvents;
             documentEvents = dte.Events.DocumentEvents;
             solutionEvents.Opened += OnContextChanged;
             solutionEvents.AfterClosing += OnSolutionAfterClosing;
             documentEvents.DocumentOpened += OnDocumentOpened;
+            indexService.IntelliSenseAvailabilityChanged += OnIntelliSenseAvailabilityChanged;
         }
 
         public bool UnrealProjectDetected { get; private set; }
@@ -36,7 +41,7 @@ namespace UEAssist.Extension
         public bool DiagnosticSquigglesEnabled { get; private set; }
         public string LastError { get; private set; }
 
-        public static async Task<IntelliSenseSquiggleController> CreateAsync(AsyncPackage package)
+        public static async Task<IntelliSenseSquiggleController> CreateAsync(AsyncPackage package, ProjectIndexService indexService)
         {
             await package.JoinableTaskFactory.SwitchToMainThreadAsync();
             var dte = await package.GetServiceAsync(typeof(DTE)) as DTE2;
@@ -45,7 +50,7 @@ namespace UEAssist.Extension
                 return null;
             }
 
-            var controller = new IntelliSenseSquiggleController(dte);
+            var controller = new IntelliSenseSquiggleController(dte, indexService);
             controller.Refresh();
             return controller;
         }
@@ -59,10 +64,11 @@ namespace UEAssist.Extension
 
             if (!UnrealProjectDetected)
             {
+                RestoreOriginalSetting();
                 return;
             }
 
-            EnsureDiagnosticSquigglesEnabled();
+            ApplyDiagnosticMode();
         }
 
         public string CreateStatusText()
@@ -77,9 +83,11 @@ namespace UEAssist.Extension
                     + "검색 기준: 현재 문서와 솔루션 폴더의 상위 경로에 있는 .uproject";
             }
 
-            var status = DiagnosticSquigglesEnabled ? "켜짐" : "확인 실패";
+            var status = indexService.IntelliSenseReady
+                ? "IntelliSense 준비됨 — 기본 진단 사용"
+                : "IntelliSense 준비 중 — 초기 오진 숨김, UEAssist 확정 오타만 표시";
             var message = "Unreal 프로젝트: " + UnrealProjectPath + "\n"
-                + "IntelliSense 진단 밑줄: " + status;
+                + "진단 상태: " + status;
 
             if (!string.IsNullOrWhiteSpace(LastError))
             {
@@ -95,6 +103,8 @@ namespace UEAssist.Extension
             solutionEvents.Opened -= OnContextChanged;
             solutionEvents.AfterClosing -= OnSolutionAfterClosing;
             documentEvents.DocumentOpened -= OnDocumentOpened;
+            indexService.IntelliSenseAvailabilityChanged -= OnIntelliSenseAvailabilityChanged;
+            RestoreOriginalSetting();
         }
 
         private void OnContextChanged()
@@ -115,23 +125,50 @@ namespace UEAssist.Extension
             Refresh();
         }
 
-        private void EnsureDiagnosticSquigglesEnabled()
+        private void ApplyDiagnosticMode()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             try
             {
                 var property = GetDisableSquigglesProperty();
-                property.Value = false;
-                DiagnosticSquigglesEnabled = !Convert.ToBoolean(property.Value);
-                if (!DiagnosticSquigglesEnabled)
+                if (!originalDisableSquiggles.HasValue)
                 {
-                    LastError = "Visual Studio가 IntelliSense 진단 밑줄 활성화를 수락하지 않았습니다.";
+                    originalDisableSquiggles = Convert.ToBoolean(property.Value);
                 }
+                var disableDuringPreview = !indexService.IntelliSenseReady;
+                property.Value = disableDuringPreview;
+                settingChanged = true;
+                DiagnosticSquigglesEnabled = !Convert.ToBoolean(property.Value);
             }
             catch (Exception exception) when (exception is ArgumentException || exception is COMException)
             {
                 DiagnosticSquigglesEnabled = false;
                 LastError = exception.Message;
+            }
+        }
+
+        private void OnIntelliSenseAvailabilityChanged(object sender, EventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (UnrealProjectDetected) ApplyDiagnosticMode();
+        }
+
+        private void RestoreOriginalSetting()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (!settingChanged || !originalDisableSquiggles.HasValue) return;
+            try
+            {
+                GetDisableSquigglesProperty().Value = originalDisableSquiggles.Value;
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is COMException)
+            {
+                LastError = exception.Message;
+            }
+            finally
+            {
+                settingChanged = false;
+                originalDisableSquiggles = null;
             }
         }
 

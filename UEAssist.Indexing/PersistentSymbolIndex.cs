@@ -38,6 +38,8 @@ namespace UEAssist.Indexing
 
         private readonly object gate = new object();
         private List<IndexedSymbol> symbols = new List<IndexedSymbol>();
+        private Dictionary<char, List<IndexedSymbol>> completionsByFirstCharacter = new Dictionary<char, List<IndexedSymbol>>();
+        private Dictionary<string, List<IndexedSymbol>> membersByOwner = new Dictionary<string, List<IndexedSymbol>>(StringComparer.Ordinal);
 
         public string ProjectRoot { get; private set; }
         public string EngineRoot { get; private set; }
@@ -70,6 +72,7 @@ namespace UEAssist.Indexing
                     .GroupBy(item => string.Join("|", item.Name, item.Kind, item.FilePath, item.Line, item.OwnerType), StringComparer.OrdinalIgnoreCase)
                     .Select(group => group.First())
                     .ToList();
+                RebuildLookups();
                 ProjectRoot = projectRoot;
                 EngineRoot = engineRoot;
                 LastUpdatedUtc = DateTime.UtcNow;
@@ -81,14 +84,21 @@ namespace UEAssist.Indexing
             prefix = prefix ?? string.Empty;
             lock (gate)
             {
-                return symbols
-                    .Where(item => Matches(item.Name, prefix))
-                    .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.OrderBy(item => item.Kind).First())
-                    .OrderBy(item => MatchRank(item.Name, prefix))
-                    .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                    .Take(limit)
-                    .ToArray();
+                IEnumerable<IndexedSymbol> pool = symbols;
+                if (prefix.Length > 0 && completionsByFirstCharacter.TryGetValue(char.ToUpperInvariant(prefix[0]), out var indexedPool))
+                {
+                    pool = indexedPool;
+                }
+
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var results = new List<IndexedSymbol>();
+                foreach (var item in pool)
+                {
+                    if (!item.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || !names.Add(item.Name)) continue;
+                    results.Add(item);
+                    if (results.Count >= limit) break;
+                }
+                return results.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             }
         }
 
@@ -102,14 +112,20 @@ namespace UEAssist.Indexing
             var owners = GetTypeHierarchy(typeName);
             lock (gate)
             {
-                return symbols
-                    .Where(item => owners.Contains(item.OwnerType) && Matches(item.Name, prefix))
-                    .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.First())
-                    .OrderBy(item => MatchRank(item.Name, prefix))
-                    .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                    .Take(limit)
-                    .ToArray();
+                var query = prefix ?? string.Empty;
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var results = new List<IndexedSymbol>();
+                foreach (var owner in owners)
+                {
+                    if (!membersByOwner.TryGetValue(owner, out var members)) continue;
+                    foreach (var item in members)
+                    {
+                        if (!item.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase) || !names.Add(item.Name)) continue;
+                        results.Add(item);
+                        if (results.Count >= limit) return results.OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+                    }
+                }
+                return results.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             }
         }
 
@@ -205,6 +221,7 @@ namespace UEAssist.Indexing
                     EngineRoot = Decode(lines[2]);
                     LastUpdatedUtc = new DateTime(long.Parse(lines[3]), DateTimeKind.Utc);
                     symbols = loaded;
+                    RebuildLookups();
                 }
                 return true;
             }
@@ -391,6 +408,18 @@ namespace UEAssist.Indexing
                 if (char.ToUpperInvariant(name[index]) == char.ToUpperInvariant(query[queryIndex])) queryIndex++;
             }
             return queryIndex == query.Length;
+        }
+
+        private void RebuildLookups()
+        {
+            completionsByFirstCharacter = symbols
+                .Where(item => !string.IsNullOrEmpty(item.Name))
+                .GroupBy(item => char.ToUpperInvariant(item.Name[0]))
+                .ToDictionary(group => group.Key, group => group.ToList());
+            membersByOwner = symbols
+                .Where(item => !string.IsNullOrEmpty(item.OwnerType))
+                .GroupBy(item => item.OwnerType, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
         }
 
         private static int MatchRank(string name, string query)

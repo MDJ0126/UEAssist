@@ -117,7 +117,6 @@ namespace UEAssist.Extension
                 var hasIntelliSense = session.CompletionSets.Any(set => !string.Equals(set.Moniker, "UEAssistPreview", StringComparison.Ordinal) && set.Completions.Count > 0);
                 if (!hasPreview || !hasIntelliSense) continue;
                 session.Dismiss();
-                broker.TriggerCompletion(view);
                 break;
             }
         }

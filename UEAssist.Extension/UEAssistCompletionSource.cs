@@ -50,7 +50,12 @@ namespace UEAssist.Extension
 
         public void AugmentCompletionSession(ICompletionSession session, IList<CompletionSet> completionSets)
         {
-            if (disposed || indexService.Index.Count == 0 || HasIntelliSenseResults(completionSets)) return;
+            if (disposed || indexService.Index.Count == 0) return;
+            if (HasIntelliSenseResults(completionSets))
+            {
+                indexService.MarkIntelliSenseReady();
+                return;
+            }
             var point = session.GetTriggerPoint(buffer.CurrentSnapshot);
             if (!point.HasValue) return;
 
