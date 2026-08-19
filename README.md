@@ -130,6 +130,8 @@ UEAssist.vsix
 
 일반 Visual Studio에서 사용하려면 Visual Studio를 모두 종료한 뒤 VSIX 파일을 실행하여 설치합니다.
 
+이미 같은 버전이 설치되어 있으면 VSIX 설치 관리자가 중복 설치를 허용하지 않습니다. 새 설치본을 배포할 때는 `source.extension.vsixmanifest`의 버전을 올려야 하며, 개발 중 빠른 반복 테스트에는 실험용 Visual Studio(`F5`)를 사용합니다.
+
 ## 현재 제한 사항
 
 UEAssist는 현재 개인용 초기 개발 버전입니다. 의미 분석은 가벼운 Unreal/C++ 파서를 기반으로 하며 완전한 C++ 컴파일러나 언어 서버가 아닙니다.
