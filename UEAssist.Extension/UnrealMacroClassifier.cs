@@ -8,16 +8,6 @@ using UEAssist.Core;
 
 namespace UEAssist.Extension
 {
-    internal static class UnrealMacroClassification
-    {
-        public const string Name = "UEAssist Unreal Macro";
-
-        [Export(typeof(ClassificationTypeDefinition))]
-        [Name(Name)]
-        [BaseDefinition("C++ Macros")]
-        internal static ClassificationTypeDefinition TypeDefinition = null;
-    }
-
     [Export(typeof(IClassifierProvider))]
     [ContentType("C/C++")]
     internal sealed class UnrealMacroClassifierProvider : IClassifierProvider
@@ -30,7 +20,7 @@ namespace UEAssist.Extension
             return textBuffer.Properties.GetOrCreateSingletonProperty(
                 () => new UnrealMacroClassifier(
                     textBuffer,
-                    ClassificationRegistry.GetClassificationType(UnrealMacroClassification.Name)));
+                    ClassificationRegistry.GetClassificationType("C++ Macros")));
         }
     }
 

@@ -8,22 +8,6 @@ using UEAssist.Core;
 
 namespace UEAssist.Extension
 {
-    internal static class CppSemanticClassification
-    {
-        public const string TypeName = "UEAssist C++ Type";
-        public const string VariableName = "UEAssist C++ Variable";
-
-        [Export(typeof(ClassificationTypeDefinition))]
-        [Name(TypeName)]
-        [BaseDefinition("C++ User Types")]
-        internal static ClassificationTypeDefinition TypeDefinition = null;
-
-        [Export(typeof(ClassificationTypeDefinition))]
-        [Name(VariableName)]
-        [BaseDefinition("C++ Variables")]
-        internal static ClassificationTypeDefinition VariableDefinition = null;
-    }
-
     [Export(typeof(IClassifierProvider))]
     [ContentType("C/C++")]
     internal sealed class CppSemanticClassifierProvider : IClassifierProvider
@@ -36,8 +20,8 @@ namespace UEAssist.Extension
             return textBuffer.Properties.GetOrCreateSingletonProperty(
                 () => new CppSemanticClassifier(
                     textBuffer,
-                    Registry.GetClassificationType(CppSemanticClassification.TypeName),
-                    Registry.GetClassificationType(CppSemanticClassification.VariableName)));
+                    Registry.GetClassificationType("C++ User Types"),
+                    Registry.GetClassificationType("C++ Variables")));
         }
     }
 

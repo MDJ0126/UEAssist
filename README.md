@@ -51,6 +51,8 @@ Unreal 매크로  → C++ Macros
 
 Visual Studio 테마를 바꾸거나 `도구 → 옵션 → 환경 → 글꼴 및 색`에서 해당 항목을 변경하면 UEAssist도 같은 색상을 사용합니다.
 
+UEAssist는 자체 색상 분류를 덧씌우지 않고 Visual Studio의 C++ 분류를 직접 사용하므로 사용자 설정 변경이 바로 반영됩니다.
+
 ### IntelliSense 오진 밑줄 억제
 
 Unreal 프로젝트가 감지되면 C++ IntelliSense가 편집기에 표시하는 잘못된 빨간 밑줄을 숨깁니다.
