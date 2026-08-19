@@ -37,6 +37,10 @@ namespace UEAssist.Core
             @"\b(?<name>(?:[AUFTEI][A-Z][A-Za-z0-9_]*))\b",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex UnrealClassInheritancePattern = new Regex(
+            @"\bclass\s+(?:\w+_API\s+)?[A-Za-z_]\w*\s*:\s*(?:public|protected|private)\s+[A-Za-z_]\w*",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex VariableDeclarationPattern = new Regex(
             @"\b(?:const\s+)?(?:auto|bool|char|short|int|long|float|double|int\d+|uint\d+|[AUFTEI][A-Z]\w*|[A-Za-z_]\w*\s*<[^;{}()]+>)\s*[*&]?\s*(?<name>[a-zA-Z_]\w*)\s*(?=[=;,\)\[])" ,
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -56,6 +60,13 @@ namespace UEAssist.Core
                 {
                     typeNames.Add(name);
                 }
+            }
+
+            if (UnrealClassInheritancePattern.IsMatch(text)
+                && (text.IndexOf("GENERATED_BODY", StringComparison.Ordinal) >= 0
+                    || text.IndexOf("UCLASS", StringComparison.Ordinal) >= 0))
+            {
+                typeNames.Add("Super");
             }
 
             var variableNames = CollectNames(text, VariableDeclarationPattern);

@@ -26,5 +26,15 @@ namespace UEAssist.Core.Tests
 
             Assert.DoesNotContain(tokens, token => token.Name == "UCLASS");
         }
+
+        [Fact]
+        public void Parse_ClassifiesGeneratedSuperAliasImmediately()
+        {
+            const string code = "UCLASS() class R1_API AR1Actor : public AActor { GENERATED_BODY() void BeginPlay() { Super::BeginPlay(); } };";
+
+            var tokens = CppSemanticParser.Parse(code);
+
+            Assert.Contains(tokens, token => token.Name == "Super" && token.Kind == SemanticTokenKind.Type);
+        }
     }
 }
