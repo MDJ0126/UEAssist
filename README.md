@@ -2,7 +2,7 @@
 
 Visual Studio에서 Unreal Engine C++ 코드를 빠르게 표시하고 탐색하기 위한 무료 오픈소스 확장입니다.
 
-[![UEAssist 다운로드](https://img.shields.io/badge/UEAssist-VSIX%20다운로드-7B68EE?style=for-the-badge&logo=visualstudio)](./UEAssist.vsix?raw=1)
+[![UEAssist 다운로드](https://img.shields.io/badge/UEAssist-VSIX%20다운로드-7B68EE?style=for-the-badge&logo=visualstudio)](https://github.com/MDJ0126/UEAssist/raw/refs/heads/main/UEAssist.vsix)
 
 ## 설치
 
