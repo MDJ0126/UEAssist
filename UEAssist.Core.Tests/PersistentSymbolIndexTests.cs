@@ -19,7 +19,9 @@ namespace UEAssist.Core.Tests
 
                 Assert.Contains(index.Complete("AMy"), item => item.Name == "AMyActor" && item.Kind == SymbolKind.Type);
                 Assert.Contains(index.CompleteMembers("AMyActor", "Get"), item => item.Name == "GetHealth");
+                Assert.Contains(index.Complete("Health"), item => item.Name == "GetHealth");
                 Assert.Equal("AMyActor*", index.ResolveVariableType("Target"));
+                Assert.Equal("float", index.ResolveReturnType("GetHealth"));
                 Assert.True(index.FindReferences("GetHealth").Count >= 2);
             }
             finally

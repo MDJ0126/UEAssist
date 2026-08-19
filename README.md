@@ -21,7 +21,10 @@
 - 디스크 캐시 기반 자동완성
   - 문자 입력, `.`, `->`에서 자동 표시
   - 사용자 클래스의 멤버와 상속 멤버 후보 제공
-  - UEAssist 후보가 부족하면 Visual Studio IntelliSense 결과 사용
+  - IntelliSense가 아직 결과를 제공하지 못할 때만 UEAssist 미리보기 표시
+  - IntelliSense가 준비되면 기본 IntelliSense 목록만 사용
+  - 타입·함수·변수 아이콘과 부분·퍼지 이름 검색 제공
+  - 숫자 리터럴과 초기화 구문에서는 불필요한 미리보기를 자동으로 닫음
 - 빠른 정의 탐색
   - `F12`: UEAssist 우선, 실패하면 Visual Studio 기본 기능 실행
   - `Alt+G`: UEAssist 빠른 탐색

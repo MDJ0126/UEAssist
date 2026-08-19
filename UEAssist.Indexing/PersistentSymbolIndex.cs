@@ -82,10 +82,10 @@ namespace UEAssist.Indexing
             lock (gate)
             {
                 return symbols
-                    .Where(item => item.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    .Where(item => Matches(item.Name, prefix))
                     .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                     .Select(group => group.OrderBy(item => item.Kind).First())
-                    .OrderBy(item => item.Name.Equals(prefix, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                    .OrderBy(item => MatchRank(item.Name, prefix))
                     .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                     .Take(limit)
                     .ToArray();
@@ -103,10 +103,11 @@ namespace UEAssist.Indexing
             lock (gate)
             {
                 return symbols
-                    .Where(item => owners.Contains(item.OwnerType) && item.Name.StartsWith(prefix ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                    .Where(item => owners.Contains(item.OwnerType) && Matches(item.Name, prefix))
                     .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                     .Select(group => group.First())
-                    .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(item => MatchRank(item.Name, prefix))
+                    .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                     .Take(limit)
                     .ToArray();
             }
@@ -117,6 +118,14 @@ namespace UEAssist.Indexing
             lock (gate)
             {
                 return symbols.LastOrDefault(item => item.Kind == SymbolKind.Variable && item.Name.Equals(variableName, StringComparison.Ordinal))?.ValueType;
+            }
+        }
+
+        public string ResolveReturnType(string functionName)
+        {
+            lock (gate)
+            {
+                return symbols.LastOrDefault(item => item.Kind == SymbolKind.Function && item.Name.Equals(functionName, StringComparison.Ordinal))?.ValueType;
             }
         }
 
@@ -345,6 +354,27 @@ namespace UEAssist.Indexing
         private static SourceSymbol ToSourceSymbol(IndexedSymbol item)
         {
             return new SourceSymbol(item.Name, item.FilePath, item.Line, item.Column, item.Kind);
+        }
+
+        private static bool Matches(string name, string query)
+        {
+            if (string.IsNullOrEmpty(query)) return true;
+            if (name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            var queryIndex = 0;
+            for (var index = 0; index < name.Length && queryIndex < query.Length; index++)
+            {
+                if (char.ToUpperInvariant(name[index]) == char.ToUpperInvariant(query[queryIndex])) queryIndex++;
+            }
+            return queryIndex == query.Length;
+        }
+
+        private static int MatchRank(string name, string query)
+        {
+            if (string.IsNullOrEmpty(query)) return 2;
+            if (name.Equals(query, StringComparison.OrdinalIgnoreCase)) return 0;
+            if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 1;
+            if (name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) return 2;
+            return 3;
         }
 
         private static string Encode(string value)
