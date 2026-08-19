@@ -27,7 +27,7 @@ namespace UEAssist.Extension
             public FormatDefinition()
             {
                 DisplayName = "UEAssist Unreal Macro";
-                ForegroundColor = Color.FromRgb(189, 99, 197);
+                ForegroundColor = Color.FromRgb(190, 183, 255);
             }
         }
     }

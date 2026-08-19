@@ -21,7 +21,7 @@ namespace UEAssist.Core
     public static class UnrealMacroParser
     {
         private static readonly Regex UnrealMacroPattern = new Regex(
-            @"\b(?:UCLASS|USTRUCT|UENUM|UINTERFACE|UFUNCTION|UPROPERTY|UMETA|UPARAM|GENERATED_BODY|GENERATED_UCLASS_BODY|GENERATED_USTRUCT_BODY|DECLARE_[A-Z0-9_]+|DEFINE_[A-Z0-9_]+|IMPLEMENT_[A-Z0-9_]+)\b",
+            @"\b(?:UCLASS|USTRUCT|UENUM|UINTERFACE|UFUNCTION|UPROPERTY|UMETA|UPARAM|GENERATED_BODY|GENERATED_UCLASS_BODY|GENERATED_USTRUCT_BODY|[A-Z][A-Z0-9_]*_API|DECLARE_[A-Z0-9_]+|DEFINE_[A-Z0-9_]+|IMPLEMENT_[A-Z0-9_]+)\b",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         public static IReadOnlyList<MacroOccurrence> Find(string text)

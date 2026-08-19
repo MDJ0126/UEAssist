@@ -32,6 +32,7 @@ GENERATED_BODY 계열
 DECLARE_*
 DEFINE_*
 IMPLEMENT_*
+<모듈명>_API
 ```
 
 ### C++ 의미 색상

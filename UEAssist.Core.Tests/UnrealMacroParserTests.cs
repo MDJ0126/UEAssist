@@ -18,6 +18,7 @@ namespace UEAssist.Core.Tests
         [Theory]
         [InlineData("DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnChanged)", "DECLARE_DYNAMIC_MULTICAST_DELEGATE")]
         [InlineData("IMPLEMENT_PRIMARY_GAME_MODULE(X, Y, Z)", "IMPLEMENT_PRIMARY_GAME_MODULE")]
+        [InlineData("class R1_API AR1Actor", "R1_API")]
         public void Find_RecognizesUnrealMacroFamilies(string code, string expected)
         {
             Assert.Equal(expected, Assert.Single(UnrealMacroParser.Find(code)).Name);
