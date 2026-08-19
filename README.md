@@ -120,11 +120,13 @@ UEAssist.Core.Tests  파서와 식별자 자동 테스트
 4. `F5`를 눌러 실험용 Visual Studio를 실행합니다.
 5. Unreal 프로젝트를 열고 `도구 → UEAssist: Status`를 확인합니다.
 
-생성된 VSIX 파일:
+빌드가 완료되면 설치용 VSIX가 프로젝트 루트에 자동으로 복사됩니다.
 
 ```text
-UEAssist.Extension/bin/Debug/UEAssist.Extension.vsix
+UEAssist.vsix
 ```
+
+원본 빌드 결과는 `UEAssist.Extension/bin/<Configuration>/UEAssist.Extension.vsix`에 유지됩니다.
 
 일반 Visual Studio에서 사용하려면 Visual Studio를 모두 종료한 뒤 VSIX 파일을 실행하여 설치합니다.
 
