@@ -15,16 +15,18 @@ namespace UEAssist.Extension
 
         private readonly AsyncPackage package;
         private readonly IntelliSenseSquiggleController controller;
+        private readonly ProjectIndexService indexService;
 
-        private GoToSymbolCommand(AsyncPackage package, IntelliSenseSquiggleController controller, OleMenuCommandService commandService)
+        private GoToSymbolCommand(AsyncPackage package, IntelliSenseSquiggleController controller, ProjectIndexService indexService, OleMenuCommandService commandService)
         {
             this.package = package;
             this.controller = controller;
+            this.indexService = indexService;
             var menuCommandId = new CommandID(CommandSet, CommandId);
             commandService.AddCommand(new MenuCommand(Execute, menuCommandId));
         }
 
-        public static async Task InitializeAsync(AsyncPackage package, IntelliSenseSquiggleController controller)
+        public static async Task InitializeAsync(AsyncPackage package, IntelliSenseSquiggleController controller, ProjectIndexService indexService)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -33,7 +35,7 @@ namespace UEAssist.Extension
 
             if (commandService != null)
             {
-                _ = new GoToSymbolCommand(package, controller, commandService);
+                _ = new GoToSymbolCommand(package, controller, indexService, commandService);
             }
         }
 
@@ -73,6 +75,7 @@ namespace UEAssist.Extension
             }
 
             controller?.Refresh();
+            indexService?.Initialize(controller?.UnrealProjectPath);
             var solutionPath = dte.Solution?.FullName;
             var solutionDirectory = !string.IsNullOrWhiteSpace(controller?.UnrealProjectPath)
                 ? Path.GetDirectoryName(controller.UnrealProjectPath)
@@ -84,7 +87,11 @@ namespace UEAssist.Extension
                 return;
             }
 
-            var results = await Task.Run(() => new CppSymbolIndexer().Find(solutionDirectory, symbolName));
+            var results = indexService?.Index.FindDefinitions(symbolName);
+            if (results == null || results.Count == 0)
+            {
+                results = await Task.Run(() => new CppSymbolIndexer().Find(solutionDirectory, symbolName));
+            }
             await package.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             if (results.Count == 0)

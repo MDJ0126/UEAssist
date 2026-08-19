@@ -17,9 +17,17 @@
 - 클래스·타입·변수·함수 및 `Super` 의미 색상 즉시 표시
 - Visual Studio C++ 사용자 색상 설정과 자동 동기화
 - 초기 IntelliSense 오진 밑줄 억제
+- 사용자 프로젝트와 사용 중인 Unreal 모듈의 공개 API 백그라운드 인덱싱
+- 디스크 캐시 기반 자동완성
+  - 문자 입력, `.`, `->`에서 자동 표시
+  - 사용자 클래스의 멤버와 상속 멤버 후보 제공
+  - UEAssist 후보가 부족하면 Visual Studio IntelliSense 결과 사용
 - 빠른 정의 탐색
   - `F12`: UEAssist 우선, 실패하면 Visual Studio 기본 기능 실행
   - `Alt+G`: UEAssist 빠른 탐색
+- 빠른 참조 후보 검색
+  - `Shift+F12`: UEAssist 우선, 실패하면 Visual Studio 기본 참조 찾기 실행
+  - 결과는 `UEAssist References` 출력 창에 파일·줄 번호로 표시
 - `도구 → UEAssist: Status`에서 감지 및 적용 상태 확인
 
 ## 작동 원리
@@ -29,6 +37,7 @@ Visual Studio IntelliSense는 Unreal의 대규모 헤더와 생성 코드를 분
 ```text
 문서 열기/수정
  ├─ UEAssist가 즉시 분석 및 표시
+ ├─ 로컬 심볼 캐시에서 자동완성·탐색 후보 제공
  └─ Visual Studio IntelliSense는 백그라운드에서 계속 로드
 
 F12
@@ -36,7 +45,9 @@ F12
  └─ 찾지 못함 → Visual Studio 기본 Go To Definition 실행
 ```
 
-UEAssist는 아직 IntelliSense 전체를 대체하지 않습니다. 자동완성, 완전한 C++ 타입 추론, 템플릿 분석과 정밀 진단은 Visual Studio IntelliSense가 담당합니다.
+최초 실행 시 프로젝트 `Source`와 `.Build.cs`에서 확인된 Unreal Runtime 모듈의 `Public/Classes` 헤더를 백그라운드에서 분석합니다. 인덱스는 `%LOCALAPPDATA%\UEAssist\Indexes`에 저장되며 소스가 변경되지 않았으면 다음 실행부터 즉시 재사용합니다.
+
+UEAssist는 IntelliSense 전체를 대체하지 않습니다. 자동완성·참조 검색은 빠른 후보를 먼저 제공하며, 완전한 C++ 타입 추론, 템플릿·조건부 컴파일 분석과 정밀 진단은 Visual Studio IntelliSense가 담당합니다.
 
 ## 개발
 

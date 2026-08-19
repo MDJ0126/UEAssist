@@ -3,7 +3,7 @@
   <Metadata>
     <Identity Id="UEAssist.Extension.dd99a661-836a-478d-8de4-bbd6557ba6bb" Version="1.0.0" Language="en-US" Publisher="MoonDongjun" />
     <DisplayName>UEAssist for Visual Studio</DisplayName>
-    <Description>Instant Unreal Engine C++ highlighting and fast symbol navigation for Visual Studio.</Description>
+    <Description>Fast Unreal Engine C++ highlighting, cached completion, navigation, and reference candidates for Visual Studio.</Description>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0, 18.0)">

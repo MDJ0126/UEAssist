@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio.ComponentModelHost;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -32,6 +33,7 @@ namespace UEAssist.Extension
     public sealed class ExtensionPackage : AsyncPackage
     {
         private IntelliSenseSquiggleController squiggleController;
+        private ProjectIndexService indexService;
 
          /// <summary>
         /// UEAssist ExtensionPackage GUID string.
@@ -53,8 +55,12 @@ namespace UEAssist.Extension
         // Do any initialization that requires the UI thread after switching to the UI thread.
         await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
         squiggleController = await IntelliSenseSquiggleController.CreateAsync(this);
-        await GoToSymbolCommand.InitializeAsync(this, squiggleController);
-        await StatusCommand.InitializeAsync(this, squiggleController);
+        var componentModel = await GetServiceAsync(typeof(SComponentModel)) as IComponentModel;
+        indexService = componentModel?.GetService<ProjectIndexService>();
+        indexService?.Initialize(squiggleController?.UnrealProjectPath);
+        await GoToSymbolCommand.InitializeAsync(this, squiggleController, indexService);
+        await FindReferencesCommand.InitializeAsync(this, squiggleController, indexService);
+        await StatusCommand.InitializeAsync(this, squiggleController, indexService);
     }
 
     protected override void Dispose(bool disposing)
