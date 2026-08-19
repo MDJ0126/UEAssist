@@ -16,14 +16,17 @@
 - `UCLASS`, `UPROPERTY`, `GENERATED_BODY`, `<모듈명>_API` 등 Unreal 매크로 즉시 표시
 - 클래스·타입·변수·함수 및 `Super` 의미 색상 즉시 표시
 - Visual Studio C++ 사용자 색상 설정과 자동 동기화
-- 초기 IntelliSense 오진 밑줄 억제
+- Visual Studio IntelliSense 진단 밑줄 유지
+- 인덱스 심볼과 대소문자가 다른 명확한 오타는 UEAssist가 즉시 표시
 - 사용자 프로젝트와 사용 중인 Unreal 모듈의 공개 API 백그라운드 인덱싱
 - 디스크 캐시 기반 자동완성
   - 문자 입력, `.`, `->`에서 자동 표시
   - 사용자 클래스의 멤버와 상속 멤버 후보 제공
   - IntelliSense가 아직 결과를 제공하지 못할 때만 UEAssist 미리보기 표시
   - IntelliSense가 준비되면 기본 IntelliSense 목록만 사용
-  - 타입·함수·변수 아이콘과 부분·퍼지 이름 검색 제공
+  - Visual Studio 기본 타입·메서드·필드 아이콘과 부분·퍼지 이름 검색 제공
+  - 입력한 문자와 일치하는 후보 부분을 굵게 표시
+  - 미리보기 항목 오른쪽에 `UEAssist` 출처 표시
   - 숫자 리터럴과 초기화 구문에서는 불필요한 미리보기를 자동으로 닫음
 - 빠른 정의 탐색
   - `F12`: UEAssist 우선, 실패하면 Visual Studio 기본 기능 실행

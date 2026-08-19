@@ -20,6 +20,7 @@ namespace UEAssist.Extension
         public PersistentSymbolIndex Index { get; } = new PersistentSymbolIndex();
         public bool IsBuilding { get; private set; }
         public string LastError { get; private set; }
+        public event EventHandler IndexUpdated;
 
         public void Initialize(string unrealProjectPath)
         {
@@ -40,6 +41,7 @@ namespace UEAssist.Extension
                         Index.Build(projectRoot, FindEngineRoot());
                         Index.Save(cachePath);
                         LastError = null;
+                        IndexUpdated?.Invoke(this, EventArgs.Empty);
                     }
                     catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
                     {

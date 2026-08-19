@@ -22,6 +22,8 @@ namespace UEAssist.Core.Tests
                 Assert.Contains(index.Complete("Health"), item => item.Name == "GetHealth");
                 Assert.Equal("AMyActor*", index.ResolveVariableType("Target"));
                 Assert.Equal("float", index.ResolveReturnType("GetHealth"));
+                Assert.Contains(index.CompleteMembers("AMyActor", "After"), item => item.Name == "AfterNestedType");
+                Assert.Contains(index.CompleteMembers("AMyActor", "Destroy"), item => item.Name == "DestroyActor");
                 Assert.True(index.FindReferences("GetHealth").Count >= 2);
             }
             finally
@@ -57,7 +59,7 @@ namespace UEAssist.Core.Tests
             Directory.CreateDirectory(Path.Combine(root, "Source", "Game"));
             File.WriteAllText(Path.Combine(root, "Source", "Game", "MyActor.h"),
                 "class ABaseActor\n{\npublic:\n    void GetBase();\n};\n" +
-                "class AMyActor : public ABaseActor\n{\npublic:\n    int32 Health;\n    float GetHealth();\n    AMyActor* Target;\n};\n");
+                "class AMyActor : public ABaseActor\n{\npublic:\n    struct FNested { int32 Value; };\n    int32 Health;\n    float GetHealth();\n    void AfterNestedType();\n    UE_API bool DestroyActor(AActor* Actor);\n    AMyActor* Target;\n};\n");
             File.WriteAllText(Path.Combine(root, "Source", "Game", "MyActor.cpp"),
                 "float AMyActor::GetHealth() { return Health; }\n");
             return root;

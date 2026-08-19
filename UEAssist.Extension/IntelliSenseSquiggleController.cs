@@ -19,8 +19,6 @@ namespace UEAssist.Extension
         private readonly DTE2 dte;
         private readonly SolutionEvents solutionEvents;
         private readonly DocumentEvents documentEvents;
-        private bool? originalDisableSquiggles;
-        private bool applied;
 
         private IntelliSenseSquiggleController(DTE2 dte)
         {
@@ -35,7 +33,7 @@ namespace UEAssist.Extension
 
         public bool UnrealProjectDetected { get; private set; }
         public string UnrealProjectPath { get; private set; }
-        public bool SquigglesSuppressed => applied;
+        public bool DiagnosticSquigglesEnabled { get; private set; }
         public string LastError { get; private set; }
 
         public static async Task<IntelliSenseSquiggleController> CreateAsync(AsyncPackage package)
@@ -61,11 +59,10 @@ namespace UEAssist.Extension
 
             if (!UnrealProjectDetected)
             {
-                RestoreOriginalSetting();
                 return;
             }
 
-            ApplySquiggleSuppression();
+            EnsureDiagnosticSquigglesEnabled();
         }
 
         public string CreateStatusText()
@@ -80,9 +77,9 @@ namespace UEAssist.Extension
                     + "검색 기준: 현재 문서와 솔루션 폴더의 상위 경로에 있는 .uproject";
             }
 
-            var status = SquigglesSuppressed ? "적용됨" : "적용 실패";
+            var status = DiagnosticSquigglesEnabled ? "켜짐" : "확인 실패";
             var message = "Unreal 프로젝트: " + UnrealProjectPath + "\n"
-                + "IntelliSense 빨간 밑줄 숨김: " + status;
+                + "IntelliSense 진단 밑줄: " + status;
 
             if (!string.IsNullOrWhiteSpace(LastError))
             {
@@ -98,7 +95,6 @@ namespace UEAssist.Extension
             solutionEvents.Opened -= OnContextChanged;
             solutionEvents.AfterClosing -= OnSolutionAfterClosing;
             documentEvents.DocumentOpened -= OnDocumentOpened;
-            RestoreOriginalSetting();
         }
 
         private void OnContextChanged()
@@ -119,51 +115,23 @@ namespace UEAssist.Extension
             Refresh();
         }
 
-        private void ApplySquiggleSuppression()
+        private void EnsureDiagnosticSquigglesEnabled()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             try
             {
                 var property = GetDisableSquigglesProperty();
-                if (!originalDisableSquiggles.HasValue)
+                property.Value = false;
+                DiagnosticSquigglesEnabled = !Convert.ToBoolean(property.Value);
+                if (!DiagnosticSquigglesEnabled)
                 {
-                    originalDisableSquiggles = Convert.ToBoolean(property.Value);
-                }
-
-                property.Value = true;
-                applied = Convert.ToBoolean(property.Value);
-                if (!applied)
-                {
-                    LastError = "Visual Studio가 DisableSquiggles 설정 변경을 수락하지 않았습니다.";
+                    LastError = "Visual Studio가 IntelliSense 진단 밑줄 활성화를 수락하지 않았습니다.";
                 }
             }
             catch (Exception exception) when (exception is ArgumentException || exception is COMException)
             {
-                applied = false;
+                DiagnosticSquigglesEnabled = false;
                 LastError = exception.Message;
-            }
-        }
-
-        private void RestoreOriginalSetting()
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            if (!applied || !originalDisableSquiggles.HasValue)
-            {
-                return;
-            }
-
-            try
-            {
-                GetDisableSquigglesProperty().Value = originalDisableSquiggles.Value;
-            }
-            catch (Exception exception) when (exception is ArgumentException || exception is COMException)
-            {
-                LastError = exception.Message;
-            }
-            finally
-            {
-                applied = false;
-                originalDisableSquiggles = null;
             }
         }
 

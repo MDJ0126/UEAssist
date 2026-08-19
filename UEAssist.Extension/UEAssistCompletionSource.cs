@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.Language.Intellisense;
+using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Classification;
 using Microsoft.VisualStudio.Utilities;
@@ -7,8 +8,6 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Windows;
-using System.Windows.Media;
 using UEAssist.Core;
 using UEAssist.Indexing;
 
@@ -84,7 +83,7 @@ namespace UEAssist.Extension
             var start = point.Value.Position - prefix.Length;
             var applicable = snapshot.CreateTrackingSpan(start, prefix.Length, SpanTrackingMode.EdgeInclusive);
             var completions = candidates.Select(CreateCompletion).ToList();
-            completionSets.Add(new CompletionSet("UEAssistPreview", "UEAssist 미리보기", applicable, completions, null));
+            completionSets.Add(new PreviewCompletionSet(applicable, completions));
         }
 
         public void Dispose()
@@ -95,7 +94,14 @@ namespace UEAssist.Extension
         private static Completion CreateCompletion(IndexedSymbol symbol)
         {
             var owner = string.IsNullOrWhiteSpace(symbol.OwnerType) ? string.Empty : " — " + symbol.OwnerType;
-            return new Completion(symbol.Name, symbol.Name, symbol.Kind + owner + " (UEAssist 미리보기)", CompletionIcons.For(symbol.Kind), symbol.Kind.ToString());
+            return new Completion4(
+                symbol.Name,
+                symbol.Name,
+                symbol.Kind + owner + " (UEAssist 미리보기)",
+                CompletionIcons.For(symbol.Kind),
+                symbol.Kind.ToString(),
+                null,
+                "UEAssist");
         }
 
         private static bool HasIntelliSenseResults(IEnumerable<CompletionSet> completionSets)
@@ -116,32 +122,46 @@ namespace UEAssist.Extension
         }
     }
 
+    internal sealed class PreviewCompletionSet : CompletionSet
+    {
+        public PreviewCompletionSet(ITrackingSpan applicableTo, IList<Completion> completions)
+            : base("UEAssistPreview", "UEAssist 미리보기", applicableTo, completions, null)
+        {
+        }
+
+        public override IReadOnlyList<Span> GetHighlightedSpansInDisplayText(string displayText)
+        {
+            var snapshot = ApplicableTo.TextBuffer.CurrentSnapshot;
+            var query = ApplicableTo.GetText(snapshot);
+            if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(displayText)) return null;
+
+            var start = displayText.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+            if (start >= 0) return new[] { new Span(start, query.Length) };
+
+            var spans = new List<Span>();
+            var queryIndex = 0;
+            for (var index = 0; index < displayText.Length && queryIndex < query.Length; index++)
+            {
+                if (char.ToUpperInvariant(displayText[index]) == char.ToUpperInvariant(query[queryIndex]))
+                {
+                    spans.Add(new Span(index, 1));
+                    queryIndex++;
+                }
+            }
+            return queryIndex == query.Length ? spans : null;
+        }
+    }
+
 
     internal static class CompletionIcons
     {
-        private static readonly ImageSource TypeIcon = CreateIcon(SymbolKind.Type);
-        private static readonly ImageSource FunctionIcon = CreateIcon(SymbolKind.Function);
-        private static readonly ImageSource VariableIcon = CreateIcon(SymbolKind.Variable);
-
-        public static ImageSource For(SymbolKind kind)
+        public static Microsoft.VisualStudio.Imaging.Interop.ImageMoniker For(SymbolKind kind)
         {
-            return kind == SymbolKind.Type ? TypeIcon : kind == SymbolKind.Function ? FunctionIcon : VariableIcon;
-        }
-
-        private static ImageSource CreateIcon(SymbolKind kind)
-        {
-            var color = kind == SymbolKind.Type ? Color.FromRgb(78, 201, 176)
-                : kind == SymbolKind.Function ? Color.FromRgb(189, 147, 249)
-                : Color.FromRgb(86, 156, 214);
-            Geometry geometry = kind == SymbolKind.Function
-                ? new EllipseGeometry(new Point(8, 8), 5, 5)
-                : kind == SymbolKind.Type
-                    ? Geometry.Parse("M 8,2 L 14,8 L 8,14 L 2,8 Z")
-                    : new RectangleGeometry(new Rect(3, 3, 10, 10), 1, 1);
-            var drawing = new GeometryDrawing(new SolidColorBrush(color), new Pen(new SolidColorBrush(Color.FromRgb(40, 40, 40)), 1), geometry);
-            var image = new DrawingImage(drawing);
-            image.Freeze();
-            return image;
+            return kind == SymbolKind.Type
+                ? KnownMonikers.Class
+                : kind == SymbolKind.Function
+                    ? KnownMonikers.Method
+                    : KnownMonikers.Field;
         }
     }
 }

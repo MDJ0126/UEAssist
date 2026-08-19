@@ -179,7 +179,7 @@ namespace UEAssist.Indexing
             List<string> lines;
             lock (gate)
             {
-                lines = new List<string> { "UEASSIST1", Encode(ProjectRoot), Encode(EngineRoot), LastUpdatedUtc.Ticks.ToString() };
+                lines = new List<string> { "UEASSIST2", Encode(ProjectRoot), Encode(EngineRoot), LastUpdatedUtc.Ticks.ToString() };
                 lines.AddRange(symbols.Select(item => string.Join("\t", Encode(item.Name), (int)item.Kind, Encode(item.FilePath), item.Line, item.Column, Encode(item.OwnerType), Encode(item.ValueType), Encode(item.BaseType))));
             }
             File.WriteAllLines(cachePath, lines, Encoding.UTF8);
@@ -191,7 +191,7 @@ namespace UEAssist.Indexing
             try
             {
                 var lines = File.ReadAllLines(cachePath, Encoding.UTF8);
-                if (lines.Length < 4 || lines[0] != "UEASSIST1") return false;
+                if (lines.Length < 4 || lines[0] != "UEASSIST2") return false;
                 var loaded = new List<IndexedSymbol>();
                 foreach (var line in lines.Skip(4))
                 {
@@ -237,18 +237,32 @@ namespace UEAssist.Indexing
             catch (IOException) { return; }
             catch (UnauthorizedAccessException) { return; }
 
-            string currentType = null;
+            var typeScopes = new Stack<TypeScope>();
+            string pendingType = null;
             var braceDepth = 0;
-            var typeDepth = -1;
             for (var index = 0; index < lines.Length; index++)
             {
                 var line = StripLineComment(lines[index]);
                 var typeMatch = TypePattern.Match(line);
                 if (typeMatch.Success)
                 {
-                    currentType = typeMatch.Groups["name"].Value;
-                    typeDepth = braceDepth;
-                    output.Add(new IndexedSymbol(currentType, SymbolKind.Type, filePath, index + 1, typeMatch.Groups["name"].Index + 1, baseType: typeMatch.Groups["base"].Value));
+                    var typeName = typeMatch.Groups["name"].Value;
+                    output.Add(new IndexedSymbol(typeName, SymbolKind.Type, filePath, index + 1, typeMatch.Groups["name"].Index + 1, baseType: typeMatch.Groups["base"].Value));
+                    var declarationTail = line.Substring(typeMatch.Index + typeMatch.Length);
+                    if (declarationTail.Contains("{"))
+                    {
+                        typeScopes.Push(new TypeScope(typeName, braceDepth + 1));
+                        pendingType = null;
+                    }
+                    else if (!declarationTail.Contains(";"))
+                    {
+                        pendingType = typeName;
+                    }
+                }
+                else if (pendingType != null && line.Contains("{"))
+                {
+                    typeScopes.Push(new TypeScope(pendingType, braceDepth + 1));
+                    pendingType = null;
                 }
 
                 var constructorMatch = ConstructorPattern.Match(line);
@@ -256,7 +270,7 @@ namespace UEAssist.Indexing
                 var selectedFunction = constructorMatch.Success ? constructorMatch : functionMatch;
                 if (selectedFunction.Success)
                 {
-                    var owner = selectedFunction.Groups["owner"].Success ? selectedFunction.Groups["owner"].Value : currentType;
+                    var owner = selectedFunction.Groups["owner"].Success ? selectedFunction.Groups["owner"].Value : typeScopes.Count == 0 ? null : typeScopes.Peek().Name;
                     var name = selectedFunction.Groups["name"].Value;
                     if (!IsControlKeyword(name) && UnrealMacroParser.Find(name).Count == 0)
                     {
@@ -264,23 +278,34 @@ namespace UEAssist.Indexing
                         output.Add(new IndexedSymbol(name, SymbolKind.Function, filePath, index + 1, selectedFunction.Groups["name"].Index + 1, owner, valueType));
                     }
                 }
-                else if (!line.Contains("(") && currentType != null)
+                else if (!line.Contains("(") && typeScopes.Count > 0)
                 {
                     var variableMatch = VariablePattern.Match(line);
                     if (variableMatch.Success)
                     {
-                        output.Add(new IndexedSymbol(variableMatch.Groups["name"].Value, SymbolKind.Variable, filePath, index + 1, variableMatch.Groups["name"].Index + 1, currentType, variableMatch.Groups["type"].Value.Trim()));
+                        output.Add(new IndexedSymbol(variableMatch.Groups["name"].Value, SymbolKind.Variable, filePath, index + 1, variableMatch.Groups["name"].Index + 1, typeScopes.Peek().Name, variableMatch.Groups["type"].Value.Trim()));
                     }
                 }
 
                 braceDepth += line.Count(character => character == '{');
                 braceDepth -= line.Count(character => character == '}');
-                if (currentType != null && braceDepth <= typeDepth && line.Contains("}"))
+                while (typeScopes.Count > 0 && braceDepth < typeScopes.Peek().Depth)
                 {
-                    currentType = null;
-                    typeDepth = -1;
+                    typeScopes.Pop();
                 }
             }
+        }
+
+        private sealed class TypeScope
+        {
+            public TypeScope(string name, int depth)
+            {
+                Name = name;
+                Depth = depth;
+            }
+
+            public string Name { get; }
+            public int Depth { get; }
         }
 
         private static IEnumerable<string> EnumerateProjectFiles(string root)

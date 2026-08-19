@@ -65,6 +65,11 @@ namespace UEAssist.Extension
             if (ErrorHandler.Succeeded(result) && shouldTrigger && !broker.IsCompletionActive(view))
             {
                 broker.TriggerCompletion(view);
+                PreferIntelliSenseWhenReady();
+            }
+            else if (ErrorHandler.Succeeded(result) && hasTypedCharacter)
+            {
+                PreferIntelliSenseWhenReady();
             }
             return result;
         }
@@ -101,6 +106,19 @@ namespace UEAssist.Extension
                 {
                     session.Dismiss();
                 }
+            }
+        }
+
+        private void PreferIntelliSenseWhenReady()
+        {
+            foreach (var session in broker.GetSessions(view).ToArray())
+            {
+                var hasPreview = session.CompletionSets.Any(set => string.Equals(set.Moniker, "UEAssistPreview", StringComparison.Ordinal));
+                var hasIntelliSense = session.CompletionSets.Any(set => !string.Equals(set.Moniker, "UEAssistPreview", StringComparison.Ordinal) && set.Completions.Count > 0);
+                if (!hasPreview || !hasIntelliSense) continue;
+                session.Dismiss();
+                broker.TriggerCompletion(view);
+                break;
             }
         }
     }
