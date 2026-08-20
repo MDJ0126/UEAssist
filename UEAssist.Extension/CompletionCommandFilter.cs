@@ -9,6 +9,7 @@ using System;
 using System.ComponentModel.Composition;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace UEAssist.Extension
 {
@@ -37,11 +38,14 @@ namespace UEAssist.Extension
     {
         private readonly IWpfTextView view;
         private readonly ICompletionBroker broker;
+        private readonly SynchronizationContext uiContext;
+        private bool liveCompletionQueued;
 
         public CompletionCommandFilter(IWpfTextView view, ICompletionBroker broker)
         {
             this.view = view;
             this.broker = broker;
+            uiContext = SynchronizationContext.Current;
         }
 
         public IOleCommandTarget Next { get; set; }
@@ -71,6 +75,17 @@ namespace UEAssist.Extension
                 DismissPreviewSessions();
             }
             var result = Next.Exec(ref commandGroup, commandId, commandOptions, input, output);
+            if (ErrorHandler.Succeeded(result) && (hasTypedCharacter || isDeletion))
+            {
+                RefreshUEAssistSessions();
+            }
+            if (ErrorHandler.Succeeded(result) && hasTypedCharacter && ShouldInvokeLiveCompletion(typedCharacter))
+            {
+                // TYPECHAR must return before the C++ editor will honor another
+                // SHOWMEMBERLIST command. Run the exact Ctrl+Space path next turn.
+                QueueShowMemberList();
+                return result;
+            }
             if (ErrorHandler.Succeeded(result) && shouldTrigger && !broker.IsCompletionActive(view))
             {
                 broker.TriggerCompletion(view);
@@ -92,6 +107,21 @@ namespace UEAssist.Extension
                 if (ErrorHandler.Failed(result)) result = VSConstants.S_OK;
             }
             return result;
+        }
+
+        private void RefreshUEAssistSessions()
+        {
+            foreach (var session in broker.GetSessions(view).ToArray())
+            {
+                if (!session.Properties.ContainsProperty(UEAssistCompletionSessionState.Marker)) continue;
+                // Preserve the 0.0.13 live-refresh behavior without entering the
+                // native VCCompletionSet that caused the later devenv crash.
+                foreach (var set in session.CompletionSets.Where(item =>
+                    string.Equals(item.Moniker, "UEAssistPreview", StringComparison.Ordinal)).ToArray())
+                {
+                    set.Filter();
+                }
+            }
         }
 
         private bool TryCommitUEAssistSelection()
@@ -156,6 +186,45 @@ namespace UEAssist.Extension
         private static bool ShouldTrigger(char character)
         {
             return char.IsLetter(character) || character == '_';
+        }
+
+        private static bool ShouldInvokeLiveCompletion(char character)
+        {
+            return char.IsLetterOrDigit(character) || character == '_' ||
+                   character == '.' || character == ':' || character == '>';
+        }
+
+        private void QueueShowMemberList()
+        {
+            if (liveCompletionQueued) return;
+            liveCompletionQueued = true;
+#pragma warning disable VSTHRD001 // Captured from IVsTextViewCreated on the VS UI thread.
+            uiContext.Post(delegate
+            {
+                liveCompletionQueued = false;
+                try
+                {
+                    ThreadHelper.ThrowIfNotOnUIThread();
+                    InvokeShowMemberList();
+                }
+                catch (Exception)
+                {
+                    // Completion must never terminate devenv.exe.
+                }
+            }, null);
+#pragma warning restore VSTHRD001
+        }
+
+        private void InvokeShowMemberList()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var group = VSConstants.VSStd2K;
+            Next.Exec(
+                ref group,
+                (uint)VSConstants.VSStd2KCmdID.SHOWMEMBERLIST,
+                (uint)OLECMDEXECOPT.OLECMDEXECOPT_DODEFAULT,
+                IntPtr.Zero,
+                IntPtr.Zero);
         }
 
         private static bool ShouldDismissPreviewBeforeInput(char character)

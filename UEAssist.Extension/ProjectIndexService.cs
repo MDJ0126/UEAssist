@@ -46,8 +46,8 @@ namespace UEAssist.Extension
                 var engineIndex = new PersistentSymbolIndex();
                 var builtInIndex = new PersistentSymbolIndex();
                 builtInIndex.LoadBuiltInApi();
-                var projectCacheLoaded = projectIndex.Load(projectCachePath);
-                var engineCacheLoaded = engineIndex.Load(engineCachePath);
+                // Publish the small built-in snapshot immediately. Large project
+                // and engine cache files must never be read on the editor UI thread.
                 Index.ReplaceWith(projectIndex, engineIndex, builtInIndex);
                 IsBuilding = true;
                 ReportIndexingStatus("캐시 확인 중...", 5);
@@ -55,6 +55,9 @@ namespace UEAssist.Extension
                 {
                     try
                     {
+                        var projectCacheLoaded = projectIndex.Load(projectCachePath);
+                        var engineCacheLoaded = engineIndex.Load(engineCachePath);
+                        Index.ReplaceWith(projectIndex, engineIndex, builtInIndex);
                         var changed = false;
                         if (!projectCacheLoaded || !IsCacheCurrent(projectRoot, projectCachePath))
                         {
@@ -102,18 +105,24 @@ namespace UEAssist.Extension
 
         public void ReportIntelliSenseEvidence(int matchingCandidates, int expectedCandidates)
         {
-            if (IntelliSenseReady) return;
+            var wasReady = IntelliSenseReady;
             var requiredMatches = Math.Min(3, expectedCandidates);
             if (requiredMatches == 0 || matchingCandidates < requiredMatches)
             {
-                intelliSenseEvidence = Math.Max(0, intelliSenseEvidence - 1);
+                // Readiness is not permanent. A stale or partially loaded native
+                // set must immediately hand completion back to UEAssist.
+                intelliSenseEvidence = 0;
+                IntelliSenseReady = false;
+                if (wasReady) IntelliSenseAvailabilityChanged?.Invoke(this, EventArgs.Empty);
                 return;
             }
 
-            intelliSenseEvidence++;
-            if (intelliSenseEvidence < 3) return;
-            IntelliSenseReady = true;
-            IntelliSenseAvailabilityChanged?.Invoke(this, EventArgs.Empty);
+            intelliSenseEvidence = Math.Min(3, intelliSenseEvidence + 1);
+            IntelliSenseReady = intelliSenseEvidence >= 3;
+            if (IntelliSenseReady != wasReady)
+            {
+                IntelliSenseAvailabilityChanged?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         public void Refresh(string unrealProjectPath)

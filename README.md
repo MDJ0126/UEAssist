@@ -1,6 +1,6 @@
 # UEAssist for Visual Studio
 
-현재 개발 버전: `0.0.14`
+현재 개발 버전: `0.0.31`
 
 **Visual Studio용 Unreal Engine C++ 생산성 확장입니다.** IntelliSense가 준비되는 동안 Unreal 매크로와 의미 색상을 먼저 표시하고, 빠른 정의 탐색을 제공합니다.
 
@@ -39,8 +39,8 @@
   - `UPROPERTY`·`UFUNCTION` 내부에서 `VisibleAnywhere`, `BlueprintReadOnly` 등 지정자 문맥 추천
   - `#include` 문자열에서는 프로젝트·Unreal Engine 헤더 경로만 문맥 추천
   - 함수 내부의 일반 선언 및 생성자 형식 지역 변수도 프로젝트 인덱스에 포함
-  - IntelliSense가 아직 결과를 제공하지 못할 때만 UEAssist 미리보기 표시
-  - IntelliSense 후보가 있으면 기본 목록만 사용하고, 후보가 없을 때만 UEAssist 단일 미리보기 표시
+  - IntelliSense가 준비되는 동안 누락된 후보를 UEAssist 목록으로 우선 표시
+  - IntelliSense 후보가 충분해지면 Visual Studio 기본 목록으로 자연스럽게 전환
   - Visual Studio 기본 타입·메서드·필드 아이콘과 빠른 접두사 검색 제공
   - 입력한 문자와 일치하는 후보 부분을 굵게 표시
   - 미리보기 항목 오른쪽에 `UEAssist` 출처 표시
