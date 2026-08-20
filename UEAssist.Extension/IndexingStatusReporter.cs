@@ -1,62 +1,45 @@
-using Microsoft.VisualStudio.TaskStatusCenter;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 using System;
-using System.Threading.Tasks;
 
 namespace UEAssist.Extension
 {
     internal sealed class IndexingStatusReporter : IDisposable
     {
+        private readonly AsyncPackage package;
         private readonly ProjectIndexService indexService;
-        private readonly IVsTaskStatusCenterService statusCenter;
-        private ITaskHandler taskHandler;
-        private TaskCompletionSource<object> completion;
+        private readonly IVsStatusbar statusBar;
+        private uint progressCookie;
 
-        public IndexingStatusReporter(ProjectIndexService indexService, IVsTaskStatusCenterService statusCenter)
+        public IndexingStatusReporter(AsyncPackage package, ProjectIndexService indexService, IVsStatusbar statusBar)
         {
+            this.package = package;
             this.indexService = indexService;
-            this.statusCenter = statusCenter;
+            this.statusBar = statusBar;
             indexService.IndexingStatusChanged += OnIndexingStatusChanged;
         }
 
         public void Dispose()
         {
             indexService.IndexingStatusChanged -= OnIndexingStatusChanged;
-            completion?.TrySetResult(null);
         }
 
         private void OnIndexingStatusChanged(object sender, IndexingStatusEventArgs e)
         {
-            if (taskHandler == null)
+            package.JoinableTaskFactory.RunAsync(async delegate
             {
-                var options = new TaskHandlerOptions
+                await package.JoinableTaskFactory.SwitchToMainThreadAsync();
+                var label = "UEAssist — " + e.Message;
+                if (e.Completed)
                 {
-                    Title = "UEAssist — Unreal API 분석",
-                    TaskSuccessMessage = "UEAssist 인덱스 준비 완료"
-                };
-                taskHandler = statusCenter.PreRegister(options, CreateProgress(e));
-                completion = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
-                taskHandler.RegisterTask(completion.Task);
-            }
-            else
-            {
-                taskHandler.Progress.Report(CreateProgress(e));
-            }
-
-            if (!e.Completed) return;
-            if (e.Failed) completion.TrySetException(new InvalidOperationException(e.Message));
-            else completion.TrySetResult(null);
-            taskHandler = null;
-            completion = null;
-        }
-
-        private static TaskProgressData CreateProgress(IndexingStatusEventArgs e)
-        {
-            return new TaskProgressData
-            {
-                ProgressText = e.Message,
-                PercentComplete = Math.Max(0, Math.Min(100, e.Percent)),
-                CanBeCanceled = false
-            };
+                    statusBar.Progress(ref progressCookie, 0, label, 100, 100);
+                    statusBar.SetText(label);
+                }
+                else
+                {
+                    statusBar.Progress(ref progressCookie, 1, label, (uint)e.Percent, 100);
+                }
+            }).FileAndForget("UEAssist/IndexingStatus");
         }
     }
 }

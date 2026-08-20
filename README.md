@@ -1,6 +1,6 @@
 # UEAssist for Visual Studio
 
-현재 개발 버전: `0.0.8`
+현재 개발 버전: `0.0.13`
 
 **Visual Studio용 Unreal Engine C++ 생산성 확장입니다.** IntelliSense가 준비되는 동안 Unreal 매크로와 의미 색상을 먼저 표시하고, 빠른 정의 탐색을 제공합니다.
 
@@ -22,11 +22,13 @@
 - 인덱스 심볼과 대소문자가 다른 명확한 오타는 UEAssist가 즉시 표시
   - Unreal 타입 형태만 검사하며 주석·문자열은 제외
   - `UCLASS`, `UPROPERTY`, `UFUNCTION`, `GENERATED_BODY` 등 Unreal 매크로는 타입 오타 검사에서 제외
+  - `asec` 또는 `asec;`처럼 한 줄에 단독으로 작성된 정의되지 않은 식별자는 즉시 오류 표시
+  - 세미콜론으로 끝난 호출문에 닫는 괄호 `)`가 빠진 명확한 구문 오류를 즉시 표시
 - 프로젝트 코드는 작은 프로젝트별 캐시로, Unreal API는 엔진 설치별 공용 캐시로 분리
 - 엔진 캐시가 없는 첫 실행에도 주요 Unreal 타입과 함수의 내장 API 스냅샷을 즉시 제공
 - 같은 엔진을 사용하는 다른 프로젝트에서는 기존 Unreal API 캐시를 즉시 재사용
 - 공용 캐시를 먼저 검색하면서 사용 중인 Unreal 모듈은 저점유율 병렬 처리로 백그라운드 최신화
-- Visual Studio 작업 상태 UI에서 프로젝트·엔진 API 분석과 캐시 저장 진행 상태 표시
+- Visual Studio 상태 표시줄에서 프로젝트·엔진 API 분석과 캐시 저장 진행 상태 표시
 - 디스크 캐시 기반 자동완성
   - 식별자 입력 시 자동 표시하며 `.`, `->`, `::` 직후에는 `Ctrl+Space`로 전체 멤버 표시
   - `Ctrl+Space`로 미리보기를 수동 호출
@@ -34,6 +36,8 @@
   - 멤버 후보를 접두사·부분 일치·문자 순서 연관성으로 정렬
   - 클래스·함수·변수 및 소유 타입 조회에서 대소문자를 구분하지 않음
   - Unreal 리플렉션 매크로는 정확한 대문자 이름과 매크로 아이콘으로 최우선 추천
+  - `UPROPERTY`·`UFUNCTION` 내부에서 `VisibleAnywhere`, `BlueprintReadOnly` 등 지정자 문맥 추천
+  - `#include` 문자열에서는 프로젝트·Unreal Engine 헤더 경로만 문맥 추천
   - 함수 내부의 일반 선언 및 생성자 형식 지역 변수도 프로젝트 인덱스에 포함
   - IntelliSense가 아직 결과를 제공하지 못할 때만 UEAssist 미리보기 표시
   - IntelliSense 목록이 불완전하면 별도 UEAssist 미리보기 세트로 후보를 보완

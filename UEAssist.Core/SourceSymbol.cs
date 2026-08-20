@@ -5,7 +5,9 @@ namespace UEAssist.Core
         Type,
         Function,
         Variable,
-        Macro
+        Macro,
+        Specifier,
+        Header
     }
 
     public sealed class SourceSymbol

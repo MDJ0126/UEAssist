@@ -38,6 +38,8 @@ namespace UEAssist.Extension
     internal sealed class UEAssistCompletionSource : ICompletionSource
     {
         private static readonly Regex MemberPattern = new Regex(@"(?<receiver>[A-Za-z_]\w*)(?<call>\s*\(\s*\))?\s*(?<operator>->|\.|::)\s*(?<prefix>[A-Za-z_]\w*)?$", RegexOptions.Compiled);
+        private static readonly Regex UnrealSpecifierContext = new Regex(@"\b(?:UPROPERTY|UFUNCTION|UCLASS|USTRUCT|UENUM|UINTERFACE)\s*\([^)]*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex IncludeContext = new Regex(@"^\s*#\s*include\s*[<""](?<prefix>[^>""]*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private readonly ITextBuffer buffer;
         private readonly ProjectIndexService indexService;
         private bool disposed;
@@ -58,10 +60,21 @@ namespace UEAssist.Extension
             var line = snapshot.GetLineFromPosition(point.Value.Position);
             var beforeCaret = snapshot.GetText(line.Start.Position, point.Value.Position - line.Start.Position);
             var memberMatch = MemberPattern.Match(beforeCaret);
+            var includeMatch = IncludeContext.Match(beforeCaret);
             string prefix;
             IReadOnlyList<IndexedSymbol> candidates;
             var hasResolvedMemberContext = false;
-            if (memberMatch.Success)
+            if (includeMatch.Success)
+            {
+                prefix = includeMatch.Groups["prefix"].Value;
+                candidates = indexService.Index.CompleteHeaders(prefix, 100);
+            }
+            else if (UnrealSpecifierContext.IsMatch(beforeCaret))
+            {
+                prefix = GetIdentifierPrefix(beforeCaret);
+                candidates = indexService.Index.CompleteSpecifiers(prefix, 100);
+            }
+            else if (memberMatch.Success)
             {
                 prefix = memberMatch.Groups["prefix"].Value;
                 var receiver = memberMatch.Groups["receiver"].Value;
@@ -194,7 +207,11 @@ namespace UEAssist.Extension
                     ? KnownMonikers.Method
                     : kind == SymbolKind.Macro
                         ? KnownMonikers.MacroPublic
-                        : KnownMonikers.Field;
+                    : kind == SymbolKind.Specifier
+                            ? KnownMonikers.IntellisenseKeyword
+                            : kind == SymbolKind.Header
+                                ? KnownMonikers.CPPHeaderFile
+                                : KnownMonikers.Field;
         }
     }
 }

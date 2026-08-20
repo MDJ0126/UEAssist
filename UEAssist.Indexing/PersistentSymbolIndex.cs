@@ -51,6 +51,8 @@ namespace UEAssist.Indexing
         private Dictionary<string, string> returnTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> baseTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, List<IndexedSymbol>> definitionsByName = new Dictionary<string, List<IndexedSymbol>>(StringComparer.OrdinalIgnoreCase);
+        private List<IndexedSymbol> specifierSymbols = new List<IndexedSymbol>();
+        private List<IndexedSymbol> headerSymbols = new List<IndexedSymbol>();
 
         public string ProjectRoot { get; private set; }
         public string EngineRoot { get; private set; }
@@ -94,6 +96,16 @@ namespace UEAssist.Indexing
                 Macro("UCLASS"), Macro("USTRUCT"), Macro("UENUM"), Macro("UINTERFACE"),
                 Macro("UFUNCTION"), Macro("UPROPERTY"), Macro("UMETA"), Macro("UPARAM"),
                 Macro("GENERATED_BODY"), Macro("GENERATED_UCLASS_BODY"), Macro("GENERATED_USTRUCT_BODY"),
+                Specifier("VisibleAnywhere"), Specifier("VisibleDefaultsOnly"), Specifier("EditAnywhere"),
+                Specifier("EditDefaultsOnly"), Specifier("EditInstanceOnly"), Specifier("BlueprintReadOnly"),
+                Specifier("BlueprintReadWrite"), Specifier("BlueprintAssignable"), Specifier("BlueprintCallable"),
+                Specifier("BlueprintPure"), Specifier("Category"), Specifier("meta"), Specifier("Transient"),
+                Specifier("Replicated"), Specifier("ReplicatedUsing"), Specifier("SaveGame"), Specifier("Config"),
+                Specifier("Instanced"), Specifier("AdvancedDisplay"), Specifier("DisplayName"), Specifier("ClampMin"),
+                Specifier("ClampMax"), Specifier("AllowPrivateAccess"),
+                Header("CoreMinimal.h"), Header("GameFramework/Actor.h"), Header("GameFramework/Pawn.h"),
+                Header("Camera/CameraComponent.h"), Header("GameFramework/SpringArmComponent.h"),
+                Header("Components/CapsuleComponent.h"), Header("Components/StaticMeshComponent.h"),
                 Function("AActor", "Destroy", "bool"), Function("AActor", "SetLifeSpan", "void"),
                 Function("AActor", "GetWorld", "UWorld*"), Function("AActor", "GetActorLocation", "FVector"),
                 Function("AActor", "SetActorLocation", "bool"), Function("AActor", "GetActorRotation", "FRotator"),
@@ -155,6 +167,46 @@ namespace UEAssist.Indexing
         private static IndexedSymbol Macro(string name)
         {
             return new IndexedSymbol(name, SymbolKind.Macro, string.Empty, 0, 0);
+        }
+
+        private static IndexedSymbol Specifier(string name)
+        {
+            return new IndexedSymbol(name, SymbolKind.Specifier, string.Empty, 0, 0);
+        }
+
+        private static IndexedSymbol Header(string includePath)
+        {
+            return new IndexedSymbol(includePath, SymbolKind.Header, string.Empty, 0, 0);
+        }
+
+        public IReadOnlyList<IndexedSymbol> CompleteSpecifiers(string prefix, int limit = 100)
+        {
+            prefix = prefix ?? string.Empty;
+            lock (gate)
+            {
+                return specifierSymbols
+                    .Where(item => item.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(item => CompletionMatchRank(item.Name, prefix))
+                    .ThenBy(item => item.Name, StringComparer.Ordinal)
+                    .Take(limit)
+                    .ToArray();
+            }
+        }
+
+        public IReadOnlyList<IndexedSymbol> CompleteHeaders(string prefix, int limit = 100)
+        {
+            prefix = prefix ?? string.Empty;
+            lock (gate)
+            {
+                return headerSymbols
+                    .Select(item => new { Item = item, Rank = HeaderMatchRank(item.Name, prefix) })
+                    .Where(value => value.Rank < int.MaxValue)
+                    .OrderBy(value => value.Rank)
+                    .ThenBy(value => value.Item.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(value => value.Item)
+                    .Take(limit)
+                    .ToArray();
+            }
         }
 
         public IReadOnlyList<IndexedSymbol> Complete(string prefix, int limit = 200)
@@ -247,6 +299,12 @@ namespace UEAssist.Indexing
                     ? definitions.Where(item => !string.IsNullOrWhiteSpace(item.FilePath)).Select(ToSourceSymbol).ToArray()
                     : Array.Empty<SourceSymbol>();
             }
+        }
+
+        public bool ContainsSymbol(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            lock (gate) return definitionsByName.ContainsKey(name);
         }
 
         public IReadOnlyList<SourceSymbol> FindReferences(string name)
@@ -541,6 +599,8 @@ namespace UEAssist.Indexing
                 returnTypesByName = lookups.ReturnTypesByName;
                 baseTypesByName = lookups.BaseTypesByName;
                 definitionsByName = lookups.DefinitionsByName;
+                specifierSymbols = lookups.Specifiers;
+                headerSymbols = lookups.Headers;
                 ProjectRoot = projectRoot;
                 EngineRoot = engineRoot;
                 LastUpdatedUtc = updatedUtc;
@@ -550,7 +610,7 @@ namespace UEAssist.Indexing
         private static LookupTables BuildLookups(List<IndexedSymbol> sourceSymbols)
         {
             var distinctCompletions = sourceSymbols
-                .Where(item => !string.IsNullOrEmpty(item.Name))
+                .Where(item => !string.IsNullOrEmpty(item.Name) && item.Kind != SymbolKind.Specifier && item.Kind != SymbolKind.Header)
                 .GroupBy(item => item.Name, StringComparer.Ordinal)
                 .Select(group => group.OrderBy(item => item.Kind).First())
                 .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
@@ -599,7 +659,20 @@ namespace UEAssist.Indexing
             var definitions = sourceSymbols
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
-            return new LookupTables(completions, members, typeNames, variableTypes, returnTypes, baseTypes, definitions);
+            var specifiers = sourceSymbols
+                .Where(item => item.Kind == SymbolKind.Specifier)
+                .OrderBy(item => item.Name, StringComparer.Ordinal)
+                .ToList();
+            var headers = sourceSymbols
+                .Where(item => IsHeader(item.FilePath))
+                .Select(item => GetIncludePath(item.FilePath))
+                .Concat(sourceSymbols.Where(item => item.Kind == SymbolKind.Header).Select(item => item.Name))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(Header)
+                .ToList();
+            return new LookupTables(completions, members, typeNames, variableTypes, returnTypes, baseTypes, definitions, specifiers, headers);
         }
 
         private sealed class LookupTables
@@ -611,7 +684,9 @@ namespace UEAssist.Indexing
                 Dictionary<string, string> variableTypes,
                 Dictionary<string, string> returnTypes,
                 Dictionary<string, string> baseTypes,
-                Dictionary<string, List<IndexedSymbol>> definitions)
+                Dictionary<string, List<IndexedSymbol>> definitions,
+                List<IndexedSymbol> specifiers,
+                List<IndexedSymbol> headers)
             {
                 CompletionsByPrefix = completions;
                 MembersByOwner = members;
@@ -620,6 +695,8 @@ namespace UEAssist.Indexing
                 ReturnTypesByName = returnTypes;
                 BaseTypesByName = baseTypes;
                 DefinitionsByName = definitions;
+                Specifiers = specifiers;
+                Headers = headers;
             }
 
             public Dictionary<string, List<IndexedSymbol>> CompletionsByPrefix { get; }
@@ -629,6 +706,8 @@ namespace UEAssist.Indexing
             public Dictionary<string, string> ReturnTypesByName { get; }
             public Dictionary<string, string> BaseTypesByName { get; }
             public Dictionary<string, List<IndexedSymbol>> DefinitionsByName { get; }
+            public List<IndexedSymbol> Specifiers { get; }
+            public List<IndexedSymbol> Headers { get; }
         }
 
         private static string GetPrefixKey(string prefix)
@@ -643,6 +722,35 @@ namespace UEAssist.Indexing
                    extension.Equals(".hpp", StringComparison.OrdinalIgnoreCase) ||
                    extension.Equals(".hh", StringComparison.OrdinalIgnoreCase) ||
                    extension.Equals(".inl", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetIncludePath(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath)) return null;
+            var normalized = filePath.Replace('\\', '/');
+            foreach (var marker in new[] { "/Public/", "/Classes/" })
+            {
+                var markerIndex = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                if (markerIndex >= 0) return normalized.Substring(markerIndex + marker.Length);
+            }
+
+            var sourceIndex = normalized.IndexOf("/Source/", StringComparison.OrdinalIgnoreCase);
+            if (sourceIndex >= 0)
+            {
+                var moduleStart = sourceIndex + "/Source/".Length;
+                var moduleEnd = normalized.IndexOf('/', moduleStart);
+                if (moduleEnd >= 0 && moduleEnd + 1 < normalized.Length) return normalized.Substring(moduleEnd + 1);
+            }
+            return Path.GetFileName(filePath);
+        }
+
+        private static int HeaderMatchRank(string path, string query)
+        {
+            if (string.IsNullOrEmpty(query)) return 3;
+            if (path.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 0;
+            if (Path.GetFileName(path).StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 1;
+            if (path.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) return 2;
+            return int.MaxValue;
         }
 
         private static ParallelOptions CreateParallelOptions()

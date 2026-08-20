@@ -28,6 +28,9 @@ namespace UEAssist.Core.Tests
                 Assert.Equal("float", index.ResolveReturnType("GetHealth"));
                 Assert.Equal("float", index.ResolveReturnType("gethealth"));
                 Assert.Contains(index.Complete("loc"), item => item.Name == "Location" && item.Kind == SymbolKind.Variable);
+                Assert.True(index.ContainsSymbol("location"));
+                Assert.False(index.ContainsSymbol("asec"));
+                Assert.Contains(index.CompleteHeaders("myactor"), item => item.Name == "MyActor.h" && item.Kind == SymbolKind.Header);
                 Assert.Contains(index.CompleteMembers("AMyActor", "After"), item => item.Name == "AfterNestedType");
                 Assert.Contains(index.CompleteMembers("AMyActor", "Destroy"), item => item.Name == "DestroyActor");
                 Assert.Contains(index.CompleteMembers("UGameplayStatics", "GetActor"), item => item.Name == "GetActorOfClass");
@@ -111,6 +114,9 @@ namespace UEAssist.Core.Tests
             Assert.Equal("UPROPERTY", macroMatches[0].Name);
             Assert.Equal(SymbolKind.Macro, macroMatches[0].Kind);
             Assert.Contains(index.Complete("uproperty"), item => item.Name == "UPROPERTY" && item.Kind == SymbolKind.Macro);
+            Assert.Equal("VisibleAnywhere", index.CompleteSpecifiers("visible")[0].Name);
+            Assert.Contains(index.CompleteSpecifiers("blueprintread"), item => item.Name == "BlueprintReadOnly");
+            Assert.Equal("Camera/CameraComponent.h", index.CompleteHeaders("camera/cam")[0].Name);
         }
 
         private static string CreateProject()

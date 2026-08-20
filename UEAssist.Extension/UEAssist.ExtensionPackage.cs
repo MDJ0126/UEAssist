@@ -1,7 +1,6 @@
 ﻿using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.ComponentModelHost;
-using Microsoft.VisualStudio.TaskStatusCenter;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -58,10 +57,17 @@ namespace UEAssist.Extension
         await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
         var componentModel = await GetServiceAsync(typeof(SComponentModel)) as IComponentModel;
         indexService = componentModel?.GetService<ProjectIndexService>();
-        var taskStatusCenter = componentModel?.GetService<IVsTaskStatusCenterService>();
-        if (indexService != null && taskStatusCenter != null)
+        try
         {
-            indexingStatusReporter = new IndexingStatusReporter(indexService, taskStatusCenter);
+            var statusBar = await GetServiceAsync(typeof(SVsStatusbar)) as IVsStatusbar;
+            if (indexService != null && statusBar != null)
+            {
+                indexingStatusReporter = new IndexingStatusReporter(this, indexService, statusBar);
+            }
+        }
+        catch (Exception)
+        {
+            indexingStatusReporter = null;
         }
         squiggleController = await IntelliSenseSquiggleController.CreateAsync(this, indexService);
         indexService?.Initialize(squiggleController?.UnrealProjectPath);

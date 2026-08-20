@@ -29,6 +29,16 @@ namespace UEAssist.Extension
     internal sealed class SymbolTypoTagger : ITagger<IErrorTag>
     {
         private static readonly Regex IdentifierPattern = new Regex(@"\b[AUFTEI][A-Z][A-Za-z0-9_]*\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex StandaloneIdentifierPattern = new Regex(@"^\s*(?<name>[A-Za-z_]\w*)\s*;?\s*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly HashSet<string> CppKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "alignas", "alignof", "asm", "auto", "bool", "break", "case", "catch", "char", "class",
+            "const", "continue", "default", "delete", "do", "double", "else", "enum", "explicit", "export",
+            "extern", "false", "float", "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
+            "namespace", "new", "noexcept", "nullptr", "operator", "private", "protected", "public", "register",
+            "return", "short", "signed", "sizeof", "static", "struct", "switch", "template", "this", "throw",
+            "true", "try", "typedef", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "while"
+        };
         private readonly ITextBuffer buffer;
         private readonly ProjectIndexService indexService;
         private ITextSnapshot cachedSnapshot;
@@ -78,6 +88,26 @@ namespace UEAssist.Extension
                     tags.Add(new TagSpan<IErrorTag>(span,
                         new ErrorTag(PredefinedErrorTypeNames.SyntaxError, $"'{match.Value}'을(를) 찾을 수 없습니다. '{correct}'을(를) 사용하시겠습니까? (UEAssist)")));
                 }
+
+                var standalone = StandaloneIdentifierPattern.Match(text);
+                if (standalone.Success)
+                {
+                    var name = standalone.Groups["name"].Value;
+                    var isMacro = macros.Any(macro => macro.Start == standalone.Groups["name"].Index && macro.Length == standalone.Groups["name"].Length);
+                    if (!isMacro && !CppKeywords.Contains(name) && !indexService.Index.ContainsSymbol(name))
+                    {
+                        var group = standalone.Groups["name"];
+                        var span = new SnapshotSpan(snapshot, line.Start.Position + group.Index, group.Length);
+                        tags.Add(new TagSpan<IErrorTag>(span,
+                            new ErrorTag(PredefinedErrorTypeNames.SyntaxError, $"정의되지 않은 식별자 '{name}'입니다. (UEAssist)")));
+                    }
+                }
+            }
+            foreach (var issue in CppDelimiterParser.FindDefiniteIssues(snapshot.GetText()))
+            {
+                var span = new SnapshotSpan(snapshot, issue.Start, issue.Length);
+                tags.Add(new TagSpan<IErrorTag>(span,
+                    new ErrorTag(PredefinedErrorTypeNames.SyntaxError, issue.Message + " (UEAssist)")));
             }
             cachedSnapshot = snapshot;
             cachedTags = tags;
