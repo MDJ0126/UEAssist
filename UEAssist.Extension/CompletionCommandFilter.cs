@@ -55,12 +55,25 @@ namespace UEAssist.Extension
         public int Exec(ref Guid commandGroup, uint commandId, uint commandOptions, IntPtr input, IntPtr output)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
+            if (IsCommitCommand(commandGroup, commandId) && TryCommitUEAssistSelection())
+            {
+                return VSConstants.S_OK;
+            }
+
             var hasTypedCharacter = TryGetTypedCharacter(commandGroup, commandId, input, out var typedCharacter);
+            var isDeletion = IsDeletion(commandGroup, commandId);
+            var isExplicitCompletion = IsExplicitCompletion(commandGroup, commandId);
             var shouldTrigger = hasTypedCharacter && ShouldTrigger(typedCharacter);
-            var result = Next.Exec(ref commandGroup, commandId, commandOptions, input, output);
-            if (ErrorHandler.Succeeded(result) && hasTypedCharacter && ShouldDismissPreview(typedCharacter))
+            // A standalone preview must never consume punctuation or whitespace as a
+            // completion commit. Dismiss it before Visual Studio processes the key.
+            if (hasTypedCharacter && ShouldDismissPreviewBeforeInput(typedCharacter))
             {
                 DismissPreviewSessions();
+            }
+            var result = Next.Exec(ref commandGroup, commandId, commandOptions, input, output);
+            if (ErrorHandler.Succeeded(result) && (hasTypedCharacter || isDeletion))
+            {
+                RefreshUEAssistSessions();
             }
             if (ErrorHandler.Succeeded(result) && shouldTrigger && !broker.IsCompletionActive(view))
             {
@@ -71,7 +84,71 @@ namespace UEAssist.Extension
             {
                 PreferIntelliSenseWhenReady();
             }
+            if (ErrorHandler.Succeeded(result) && isDeletion && !broker.IsCompletionActive(view) && HasCompletionContextAtCaret())
+            {
+                broker.TriggerCompletion(view);
+                PreferIntelliSenseWhenReady();
+            }
+            if (isExplicitCompletion && !broker.IsCompletionActive(view))
+            {
+                broker.TriggerCompletion(view);
+                PreferIntelliSenseWhenReady();
+                if (ErrorHandler.Failed(result)) result = VSConstants.S_OK;
+            }
             return result;
+        }
+
+        private void RefreshUEAssistSessions()
+        {
+            foreach (var session in broker.GetSessions(view).ToArray())
+            {
+                if (session.Properties.ContainsProperty(UEAssistCompletionSessionState.Marker)) session.Filter();
+            }
+        }
+
+        private bool TryCommitUEAssistSelection()
+        {
+            foreach (var session in broker.GetSessions(view).ToArray())
+            {
+                var set = session.SelectedCompletionSet;
+                var selected = set?.SelectionStatus?.Completion;
+                var isUEAssist = string.Equals(set?.Moniker, "UEAssistPreview", StringComparison.Ordinal) ||
+                                 selected is Completion4 completion && string.Equals(completion.Suffix, "UEAssist", StringComparison.Ordinal);
+                if (!isUEAssist || selected == null) continue;
+                session.Commit();
+                return true;
+            }
+            return false;
+        }
+
+        private static bool IsCommitCommand(Guid commandGroup, uint commandId)
+        {
+            return commandGroup == VSConstants.VSStd2K &&
+                   (commandId == (uint)VSConstants.VSStd2KCmdID.TAB ||
+                    commandId == (uint)VSConstants.VSStd2KCmdID.RETURN);
+        }
+
+        private static bool IsExplicitCompletion(Guid commandGroup, uint commandId)
+        {
+            return commandGroup == VSConstants.VSStd2K &&
+                   (commandId == (uint)VSConstants.VSStd2KCmdID.COMPLETEWORD ||
+                    commandId == (uint)VSConstants.VSStd2KCmdID.SHOWMEMBERLIST ||
+                    commandId == (uint)VSConstants.VSStd2KCmdID.AUTOCOMPLETE);
+        }
+
+        private static bool IsDeletion(Guid commandGroup, uint commandId)
+        {
+            return commandGroup == VSConstants.VSStd2K &&
+                   (commandId == (uint)VSConstants.VSStd2KCmdID.BACKSPACE ||
+                    commandId == (uint)VSConstants.VSStd2KCmdID.DELETE);
+        }
+
+        private bool HasCompletionContextAtCaret()
+        {
+            var point = view.Caret.Position.BufferPosition;
+            if (point.Position == 0) return false;
+            var previous = point.Snapshot[point.Position - 1];
+            return char.IsLetterOrDigit(previous) || previous == '_';
         }
 
         private static bool TryGetTypedCharacter(Guid commandGroup, uint commandId, IntPtr input, out char character)
@@ -90,12 +167,12 @@ namespace UEAssist.Extension
 
         private static bool ShouldTrigger(char character)
         {
-            return char.IsLetter(character) || character == '_' || character == '.' || character == '>';
+            return char.IsLetter(character) || character == '_';
         }
 
-        private static bool ShouldDismissPreview(char character)
+        private static bool ShouldDismissPreviewBeforeInput(char character)
         {
-            return char.IsWhiteSpace(character) || "(),;{}[]=\"'".IndexOf(character) >= 0;
+            return !char.IsLetterOrDigit(character) && character != '_';
         }
 
         private void DismissPreviewSessions()

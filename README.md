@@ -1,5 +1,7 @@
 # UEAssist for Visual Studio
 
+현재 개발 버전: `0.0.7`
+
 **Visual Studio용 Unreal Engine C++ 생산성 확장입니다.** IntelliSense가 준비되는 동안 Unreal 매크로와 의미 색상을 먼저 표시하고, 빠른 정의 탐색을 제공합니다.
 
 [![UEAssist 다운로드](https://img.shields.io/badge/UEAssist-VSIX%20다운로드-7B68EE?style=for-the-badge&logo=visualstudio)](https://github.com/MDJ0126/UEAssist/raw/refs/heads/main/UEAssist.vsix)
@@ -18,16 +20,33 @@
 - Visual Studio C++ 사용자 색상 설정과 자동 동기화
 - IntelliSense 준비 전 초기 오진 밑줄은 숨기고, 준비 후 기본 진단으로 자동 전환
 - 인덱스 심볼과 대소문자가 다른 명확한 오타는 UEAssist가 즉시 표시
-- 사용자 프로젝트와 사용 중인 Unreal 모듈의 공개 API 백그라운드 인덱싱
+  - Unreal 타입 형태만 검사하며 주석·문자열은 제외
+  - `UCLASS`, `UPROPERTY`, `UFUNCTION`, `GENERATED_BODY` 등 Unreal 매크로는 타입 오타 검사에서 제외
+- 프로젝트 코드는 작은 프로젝트별 캐시로, Unreal API는 엔진 설치별 공용 캐시로 분리
+- 엔진 캐시가 없는 첫 실행에도 주요 Unreal 타입과 함수의 내장 API 스냅샷을 즉시 제공
+- 같은 엔진을 사용하는 다른 프로젝트에서는 기존 Unreal API 캐시를 즉시 재사용
+- 공용 캐시를 먼저 검색하면서 사용 중인 Unreal 모듈은 저점유율 병렬 처리로 백그라운드 최신화
+- Visual Studio 작업 상태 UI에서 프로젝트·엔진 API 분석과 캐시 저장 진행 상태 표시
 - 디스크 캐시 기반 자동완성
-  - 문자 입력, `.`, `->`에서 자동 표시
+  - 식별자 입력 시 자동 표시하며 `.`, `->`, `::` 직후에는 `Ctrl+Space`로 전체 멤버 표시
+  - `Ctrl+Space`로 미리보기를 수동 호출
   - 사용자 클래스의 멤버와 상속 멤버 후보 제공
+  - 멤버 후보를 접두사·부분 일치·문자 순서 연관성으로 정렬
+  - 클래스·함수·변수 및 소유 타입 조회에서 대소문자를 구분하지 않음
+  - 함수 내부의 일반 선언 및 생성자 형식 지역 변수도 프로젝트 인덱스에 포함
   - IntelliSense가 아직 결과를 제공하지 못할 때만 UEAssist 미리보기 표시
+  - IntelliSense 목록이 불완전하면 별도 UEAssist 미리보기 세트로 후보를 보완
   - IntelliSense가 준비되면 기본 IntelliSense 목록만 사용
   - Visual Studio 기본 타입·메서드·필드 아이콘과 빠른 접두사 검색 제공
   - 입력한 문자와 일치하는 후보 부분을 굵게 표시
   - 미리보기 항목 오른쪽에 `UEAssist` 출처 표시
+  - 접두사·타입·멤버·정의·반환형·상속 관계를 미리 해시 인덱스로 구성하여 입력 중 즉시 조회
   - 숫자 리터럴과 초기화 구문에서는 불필요한 미리보기를 자동으로 닫음
+  - 미리보기는 입력 문자를 후보 확정 문자로 소비하지 않음
+  - UEAssist 후보가 포함된 목록은 다음 글자 입력 전에 안전하게 갱신하여 현재 접두사를 즉시 반영
+  - 선택한 UEAssist 후보를 `Tab` 또는 `Enter`로 입력
+  - 백스페이스·Delete로 후보가 닫히면 식별자 입력 문맥에서 다시 표시
+  - 대규모 엔진 해시 테이블은 잠금 밖에서 완성한 뒤 원자적으로 교체하여 입력 검색을 차단하지 않음
 - 빠른 정의 탐색
   - `F12`: UEAssist 우선, 실패하면 Visual Studio 기본 기능 실행
   - `Alt+G`: UEAssist 빠른 탐색

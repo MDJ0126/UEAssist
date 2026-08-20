@@ -37,7 +37,7 @@ namespace UEAssist.Extension
 
     internal sealed class UEAssistCompletionSource : ICompletionSource
     {
-        private static readonly Regex MemberPattern = new Regex(@"(?<receiver>[A-Za-z_]\w*)(?<call>\s*\(\s*\))?\s*(?:->|\.)\s*(?<prefix>[A-Za-z_]\w*)?$", RegexOptions.Compiled);
+        private static readonly Regex MemberPattern = new Regex(@"(?<receiver>[A-Za-z_]\w*)(?<call>\s*\(\s*\))?\s*(?<operator>->|\.|::)\s*(?<prefix>[A-Za-z_]\w*)?$", RegexOptions.Compiled);
         private readonly ITextBuffer buffer;
         private readonly ProjectIndexService indexService;
         private bool disposed;
@@ -51,11 +51,6 @@ namespace UEAssist.Extension
         public void AugmentCompletionSession(ICompletionSession session, IList<CompletionSet> completionSets)
         {
             if (disposed || indexService.Index.Count == 0) return;
-            if (HasIntelliSenseResults(completionSets))
-            {
-                indexService.MarkIntelliSenseReady();
-                return;
-            }
             var point = session.GetTriggerPoint(buffer.CurrentSnapshot);
             if (!point.HasValue) return;
 
@@ -65,30 +60,52 @@ namespace UEAssist.Extension
             var memberMatch = MemberPattern.Match(beforeCaret);
             string prefix;
             IReadOnlyList<IndexedSymbol> candidates;
+            var hasResolvedMemberContext = false;
             if (memberMatch.Success)
             {
                 prefix = memberMatch.Groups["prefix"].Value;
                 var receiver = memberMatch.Groups["receiver"].Value;
-                var typeName = receiver == "Super"
+                var typeName = memberMatch.Groups["operator"].Value == "::"
+                    ? receiver
+                    : receiver == "Super"
                     ? string.Empty
                     : memberMatch.Groups["call"].Success
                         ? indexService.Index.ResolveReturnType(receiver)
                         : indexService.Index.ResolveVariableType(receiver);
-                candidates = string.IsNullOrWhiteSpace(typeName)
-                    ? indexService.Index.Complete(prefix)
-                    : indexService.Index.CompleteMembers(NormalizeType(typeName), prefix);
+                hasResolvedMemberContext = !string.IsNullOrWhiteSpace(typeName);
+                candidates = !hasResolvedMemberContext
+                    ? indexService.Index.Complete(prefix, 100)
+                    : indexService.Index.CompleteMembers(NormalizeType(typeName), prefix, 100);
             }
             else
             {
                 prefix = GetIdentifierPrefix(beforeCaret);
-                candidates = indexService.Index.Complete(prefix);
+                candidates = indexService.Index.Complete(prefix, 100);
             }
 
             if (candidates.Count == 0) return;
+            var builtInSet = completionSets.FirstOrDefault(set =>
+                !string.Equals(set.Moniker, "UEAssistPreview", StringComparison.Ordinal) &&
+                set.Completions != null && set.Completions.Count > 0);
             var start = point.Value.Position - prefix.Length;
             var applicable = snapshot.CreateTrackingSpan(start, prefix.Length, SpanTrackingMode.EdgeInclusive);
+            if (builtInSet != null)
+            {
+                var builtInNames = new HashSet<string>(builtInSet.Completions.Select(item => item.InsertionText), StringComparer.OrdinalIgnoreCase);
+                var overlap = candidates.Count(candidate => builtInNames.Contains(candidate.Name));
+                if (hasResolvedMemberContext) indexService.ReportIntelliSenseEvidence(overlap, candidates.Count);
+                if (indexService.IntelliSenseReady) return;
+
+                var previewItems = candidates.Where(candidate => !builtInNames.Contains(candidate.Name)).Select(CreateCompletion).ToList();
+                if (previewItems.Count == 0) return;
+                completionSets.Insert(0, new PreviewCompletionSet(applicable, previewItems));
+                MarkUEAssistSession(session);
+                return;
+            }
+
             var completions = candidates.Select(CreateCompletion).ToList();
             completionSets.Add(new PreviewCompletionSet(applicable, completions));
+            MarkUEAssistSession(session);
         }
 
         public void Dispose()
@@ -109,11 +126,6 @@ namespace UEAssist.Extension
                 "UEAssist");
         }
 
-        private static bool HasIntelliSenseResults(IEnumerable<CompletionSet> completionSets)
-        {
-            return completionSets.Any(set => set.Completions != null && set.Completions.Count > 0 && !string.Equals(set.Moniker, "UEAssistPreview", StringComparison.Ordinal));
-        }
-
         private static string GetIdentifierPrefix(string text)
         {
             var index = text.Length;
@@ -125,6 +137,19 @@ namespace UEAssist.Extension
         {
             return Regex.Replace(typeName ?? string.Empty, @"\bconst\b|[*&\s]", string.Empty);
         }
+
+        private static void MarkUEAssistSession(ICompletionSession session)
+        {
+            if (!session.Properties.ContainsProperty(UEAssistCompletionSessionState.Marker))
+            {
+                session.Properties.AddProperty(UEAssistCompletionSessionState.Marker, true);
+            }
+        }
+    }
+
+    internal static class UEAssistCompletionSessionState
+    {
+        internal static readonly object Marker = new object();
     }
 
     internal sealed class PreviewCompletionSet : CompletionSet
@@ -155,6 +180,7 @@ namespace UEAssist.Extension
             }
             return queryIndex == query.Length ? spans : null;
         }
+
     }
 
 

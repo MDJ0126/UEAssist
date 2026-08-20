@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
 using System.Text.RegularExpressions;
+using UEAssist.Core;
 
 namespace UEAssist.Extension
 {
@@ -27,9 +28,11 @@ namespace UEAssist.Extension
 
     internal sealed class SymbolTypoTagger : ITagger<IErrorTag>
     {
-        private static readonly Regex IdentifierPattern = new Regex(@"\b[A-Za-z_]\w*\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex IdentifierPattern = new Regex(@"\b[AUFTEI][A-Z][A-Za-z0-9_]*\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private readonly ITextBuffer buffer;
         private readonly ProjectIndexService indexService;
+        private ITextSnapshot cachedSnapshot;
+        private IReadOnlyList<ITagSpan<IErrorTag>> cachedTags = Array.Empty<ITagSpan<IErrorTag>>();
 
         public SymbolTypoTagger(ITextBuffer buffer, ProjectIndexService indexService)
         {
@@ -45,31 +48,62 @@ namespace UEAssist.Extension
         {
             if (spans.Count == 0 || indexService.Index.Count == 0) yield break;
             var snapshot = spans[0].Snapshot;
+            EnsureParsed(snapshot);
             foreach (var requestedSpan in spans)
             {
-                var text = requestedSpan.GetText();
-                foreach (Match match in IdentifierPattern.Matches(text))
+                foreach (var tag in cachedTags)
                 {
-                    var name = match.Value;
-                    var correct = indexService.Index.Complete(name, 20)
-                        .Select(item => item.Name)
-                        .FirstOrDefault(candidate => candidate.Equals(name, StringComparison.OrdinalIgnoreCase) && !candidate.Equals(name, StringComparison.Ordinal));
-                    if (correct == null) continue;
-
-                    var span = new SnapshotSpan(snapshot, requestedSpan.Start.Position + match.Index, match.Length);
-                    yield return new TagSpan<IErrorTag>(span,
-                        new ErrorTag(PredefinedErrorTypeNames.SyntaxError, $"'{name}'을(를) 찾을 수 없습니다. '{correct}'을(를) 사용하시겠습니까? (UEAssist)"));
+                    if (tag.Span.IntersectsWith(requestedSpan)) yield return tag;
                 }
             }
         }
 
+        private void EnsureParsed(ITextSnapshot snapshot)
+        {
+            if (ReferenceEquals(snapshot, cachedSnapshot)) return;
+            var tags = new List<ITagSpan<IErrorTag>>();
+            foreach (var line in snapshot.Lines)
+            {
+                var text = line.GetText();
+                var comment = text.IndexOf("//", StringComparison.Ordinal);
+                if (comment >= 0) text = text.Substring(0, comment);
+                var macros = UnrealMacroParser.Find(text);
+                foreach (Match match in IdentifierPattern.Matches(text))
+                {
+                    if (IsInsideString(text, match.Index)) continue;
+                    if (macros.Any(macro => macro.Start == match.Index && macro.Length == match.Length)) continue;
+                    var correct = indexService.Index.FindCorrectTypeCasing(match.Value);
+                    if (correct == null) continue;
+                    var span = new SnapshotSpan(snapshot, line.Start.Position + match.Index, match.Length);
+                    tags.Add(new TagSpan<IErrorTag>(span,
+                        new ErrorTag(PredefinedErrorTypeNames.SyntaxError, $"'{match.Value}'을(를) 찾을 수 없습니다. '{correct}'을(를) 사용하시겠습니까? (UEAssist)")));
+                }
+            }
+            cachedSnapshot = snapshot;
+            cachedTags = tags;
+        }
+
+        private static bool IsInsideString(string text, int position)
+        {
+            var quoteCount = 0;
+            for (var index = 0; index < position; index++)
+            {
+                if (text[index] == '"' && (index == 0 || text[index - 1] != '\\')) quoteCount++;
+            }
+            return quoteCount % 2 != 0;
+        }
+
         private void OnBufferChanged(object sender, TextContentChangedEventArgs e)
         {
+            cachedSnapshot = null;
+            cachedTags = Array.Empty<ITagSpan<IErrorTag>>();
             RaiseTagsChanged(e.After);
         }
 
         private void OnIndexUpdated(object sender, EventArgs e)
         {
+            cachedSnapshot = null;
+            cachedTags = Array.Empty<ITagSpan<IErrorTag>>();
             RaiseTagsChanged(buffer.CurrentSnapshot);
         }
 

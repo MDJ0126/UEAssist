@@ -51,6 +51,7 @@
     <Compile Include="FindReferencesCommand.cs" />
     <Compile Include="GoToSymbolCommand.cs" />
     <Compile Include="IntelliSenseSquiggleController.cs" />
+    <Compile Include="IndexingStatusReporter.cs" />
     <Compile Include="ProjectIndexService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="StatusCommand.cs" />
