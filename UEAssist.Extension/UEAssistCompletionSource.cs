@@ -107,12 +107,8 @@ namespace UEAssist.Extension
                 var builtInNames = new HashSet<string>(builtInSet.Completions.Select(item => item.InsertionText), StringComparer.OrdinalIgnoreCase);
                 var overlap = candidates.Count(candidate => builtInNames.Contains(candidate.Name));
                 if (hasResolvedMemberContext) indexService.ReportIntelliSenseEvidence(overlap, candidates.Count);
-                if (indexService.IntelliSenseReady) return;
-
-                var previewItems = candidates.Where(candidate => !builtInNames.Contains(candidate.Name)).Select(CreateCompletion).ToList();
-                if (previewItems.Count == 0) return;
-                completionSets.Insert(0, new PreviewCompletionSet(applicable, previewItems));
-                MarkUEAssistSession(session);
+                // A native VC completion set and a UEAssist set must never share the
+                // same session. VCCompletionSet can crash while highlighting both.
                 return;
             }
 

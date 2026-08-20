@@ -71,10 +71,6 @@ namespace UEAssist.Extension
                 DismissPreviewSessions();
             }
             var result = Next.Exec(ref commandGroup, commandId, commandOptions, input, output);
-            if (ErrorHandler.Succeeded(result) && (hasTypedCharacter || isDeletion))
-            {
-                RefreshUEAssistSessions();
-            }
             if (ErrorHandler.Succeeded(result) && shouldTrigger && !broker.IsCompletionActive(view))
             {
                 broker.TriggerCompletion(view);
@@ -96,14 +92,6 @@ namespace UEAssist.Extension
                 if (ErrorHandler.Failed(result)) result = VSConstants.S_OK;
             }
             return result;
-        }
-
-        private void RefreshUEAssistSessions()
-        {
-            foreach (var session in broker.GetSessions(view).ToArray())
-            {
-                if (session.Properties.ContainsProperty(UEAssistCompletionSessionState.Marker)) session.Filter();
-            }
         }
 
         private bool TryCommitUEAssistSelection()
