@@ -107,6 +107,10 @@ namespace UEAssist.Core.Tests
             Assert.Contains(index.Complete("U"), item => item.Name == "UGameplayStatics");
             Assert.Contains(index.Complete("UGame"), item => item.Name == "UGameplayStatics");
             Assert.Contains(index.Complete("UGameplaySta"), item => item.Name == "UGameplayStatics");
+            var macroMatches = index.Complete("UPROPERTY");
+            Assert.Equal("UPROPERTY", macroMatches[0].Name);
+            Assert.Equal(SymbolKind.Macro, macroMatches[0].Kind);
+            Assert.Contains(index.Complete("uproperty"), item => item.Name == "UPROPERTY" && item.Kind == SymbolKind.Macro);
         }
 
         private static string CreateProject()

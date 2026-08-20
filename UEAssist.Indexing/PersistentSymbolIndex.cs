@@ -91,6 +91,9 @@ namespace UEAssist.Indexing
                 Type("UObject"), Type("AActor", "UObject"), Type("UActorComponent", "UObject"),
                 Type("USceneComponent", "UActorComponent"), Type("UWorld", "UObject"),
                 Type("UGameplayStatics", "UObject"), Type("FVector"), Type("FRotator"),
+                Macro("UCLASS"), Macro("USTRUCT"), Macro("UENUM"), Macro("UINTERFACE"),
+                Macro("UFUNCTION"), Macro("UPROPERTY"), Macro("UMETA"), Macro("UPARAM"),
+                Macro("GENERATED_BODY"), Macro("GENERATED_UCLASS_BODY"), Macro("GENERATED_USTRUCT_BODY"),
                 Function("AActor", "Destroy", "bool"), Function("AActor", "SetLifeSpan", "void"),
                 Function("AActor", "GetWorld", "UWorld*"), Function("AActor", "GetActorLocation", "FVector"),
                 Function("AActor", "SetActorLocation", "bool"), Function("AActor", "GetActorRotation", "FRotator"),
@@ -149,6 +152,11 @@ namespace UEAssist.Indexing
             return new IndexedSymbol(name, SymbolKind.Function, string.Empty, 0, 0, owner, returnType);
         }
 
+        private static IndexedSymbol Macro(string name)
+        {
+            return new IndexedSymbol(name, SymbolKind.Macro, string.Empty, 0, 0);
+        }
+
         public IReadOnlyList<IndexedSymbol> Complete(string prefix, int limit = 200)
         {
             prefix = prefix ?? string.Empty;
@@ -160,7 +168,7 @@ namespace UEAssist.Indexing
                     pool = indexedPool;
                 }
 
-                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var names = new HashSet<string>(StringComparer.Ordinal);
                 var results = new List<IndexedSymbol>();
                 foreach (var item in pool)
                 {
@@ -168,7 +176,10 @@ namespace UEAssist.Indexing
                     results.Add(item);
                     if (results.Count >= limit) break;
                 }
-                return results.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+                return results
+                    .OrderBy(item => CompletionMatchRank(item.Name, prefix))
+                    .ThenBy(item => item.Name, StringComparer.Ordinal)
+                    .ToArray();
             }
         }
 
@@ -540,7 +551,7 @@ namespace UEAssist.Indexing
         {
             var distinctCompletions = sourceSymbols
                 .Where(item => !string.IsNullOrEmpty(item.Name))
-                .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(item => item.Name, StringComparer.Ordinal)
                 .Select(group => group.OrderBy(item => item.Kind).First())
                 .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -648,6 +659,14 @@ namespace UEAssist.Indexing
             if (name.Equals(query, StringComparison.OrdinalIgnoreCase)) return 0;
             if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 1;
             if (name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) return 2;
+            return 3;
+        }
+
+        private static int CompletionMatchRank(string name, string query)
+        {
+            if (name.Equals(query, StringComparison.Ordinal)) return 0;
+            if (name.StartsWith(query, StringComparison.Ordinal)) return 1;
+            if (name.Equals(query, StringComparison.OrdinalIgnoreCase)) return 2;
             return 3;
         }
 

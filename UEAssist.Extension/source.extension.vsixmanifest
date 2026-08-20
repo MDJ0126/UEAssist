@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="UEAssist.Extension.dd99a661-836a-478d-8de4-bbd6557ba6bb" Version="0.0.7" Language="en-US" Publisher="MoonDongjun" />
+    <Identity Id="UEAssist.Extension.dd99a661-836a-478d-8de4-bbd6557ba6bb" Version="0.0.8" Language="en-US" Publisher="MoonDongjun" />
     <DisplayName>UEAssist for Visual Studio</DisplayName>
     <Description>Fast Unreal Engine C++ highlighting, cached completion, navigation, and reference candidates for Visual Studio.</Description>
   </Metadata>

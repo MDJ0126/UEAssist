@@ -4,7 +4,8 @@ namespace UEAssist.Core
     {
         Type,
         Function,
-        Variable
+        Variable,
+        Macro
     }
 
     public sealed class SourceSymbol

@@ -192,7 +192,9 @@ namespace UEAssist.Extension
                 ? KnownMonikers.Class
                 : kind == SymbolKind.Function
                     ? KnownMonikers.Method
-                    : KnownMonikers.Field;
+                    : kind == SymbolKind.Macro
+                        ? KnownMonikers.MacroPublic
+                        : KnownMonikers.Field;
         }
     }
 }
