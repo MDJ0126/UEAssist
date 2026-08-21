@@ -225,6 +225,13 @@ namespace UEAssist.Extension
                 (uint)OLECMDEXECOPT.OLECMDEXECOPT_DODEFAULT,
                 IntPtr.Zero,
                 IntPtr.Zero);
+
+            // Match the remainder of the real Ctrl+Space path in Exec(): the C++
+            // command may return without creating a session after '.', '->', or '::'.
+            if (!broker.IsCompletionActive(view))
+            {
+                broker.TriggerCompletion(view);
+            }
         }
 
         private static bool ShouldDismissPreviewBeforeInput(char character)
