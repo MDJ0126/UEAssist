@@ -86,9 +86,11 @@ namespace UEAssist.Extension
                         ? indexService.Index.ResolveReturnType(receiver)
                         : indexService.Index.ResolveVariableType(receiver);
                 hasResolvedMemberContext = !string.IsNullOrWhiteSpace(typeName);
-                candidates = !hasResolvedMemberContext
-                    ? indexService.Index.Complete(prefix, 100)
-                    : indexService.Index.CompleteMembers(NormalizeType(typeName), prefix, 100);
+                candidates = hasResolvedMemberContext
+                    ? indexService.Index.CompleteMembers(NormalizeType(typeName), prefix, 100)
+                    : receiver == "Super"
+                        ? indexService.Index.Complete(prefix, 100)
+                        : Array.Empty<IndexedSymbol>();
             }
             else
             {

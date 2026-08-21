@@ -18,6 +18,12 @@ namespace UEAssist.Indexing
         private static readonly HashSet<string> IgnoredDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".git", ".vs", "Binaries", "DerivedDataCache", "Intermediate", "Saved" };
 
+        private static readonly Dictionary<string, string> BuiltInReturnTypes =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "GetWorld", "UWorld*" }
+            };
+
         private static readonly Regex TypePattern = new Regex(
             @"\b(?:class|struct)\s+(?:\w+_API\s+)?(?<name>[A-Za-z_]\w*)(?:\s*:\s*(?:public|protected|private)\s+(?<base>[A-Za-z_]\w*))?",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -277,7 +283,19 @@ namespace UEAssist.Indexing
         {
             lock (gate)
             {
-                return returnTypesByName.TryGetValue(functionName, out var typeName) ? typeName : null;
+                // Core Unreal functions must not be displaced by incomplete macro-heavy
+                // declarations discovered while scanning engine headers.
+                if (BuiltInReturnTypes.TryGetValue(functionName, out var builtInType))
+                {
+                    return builtInType;
+                }
+
+                if (returnTypesByName.TryGetValue(functionName, out var typeName) &&
+                    !string.IsNullOrWhiteSpace(typeName))
+                {
+                    return typeName;
+                }
+                return null;
             }
         }
 

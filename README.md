@@ -1,6 +1,6 @@
 # UEAssist for Visual Studio
 
-현재 개발 버전: `0.0.32`
+현재 개발 버전: `0.0.33`
 
 **Visual Studio용 Unreal Engine C++ 생산성 확장입니다.** IntelliSense가 준비되는 동안 Unreal 매크로와 의미 색상을 먼저 표시하고, 빠른 정의 탐색을 제공합니다.
 

@@ -102,6 +102,8 @@ namespace UEAssist.Core.Tests
 
             Assert.Contains(index.CompleteMembers("AActor", "GetActor"), item => item.Name == "GetActorLocation");
             Assert.Contains(index.CompleteMembers("UWorld", "Spawn"), item => item.Name == "SpawnActor");
+            Assert.Equal("UWorld*", index.ResolveReturnType("GetWorld"));
+            Assert.Equal("UWorld*", index.ResolveReturnType("getworld"));
             var gameplayMatches = index.CompleteMembers("UGameplayStatics", "GetActor");
             Assert.Contains(gameplayMatches, item => item.Name == "GetActorOfClass");
             Assert.Contains(gameplayMatches, item => item.Name == "GetAllActorsOfClass");
