@@ -379,6 +379,21 @@ namespace UEAssist.Indexing
             lock (gate) return definitionsByName.ContainsKey(name);
         }
 
+        public bool ContainsMember(string ownerType, string memberName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerType) || string.IsNullOrWhiteSpace(memberName)) return false;
+            foreach (var owner in GetTypeHierarchy(NormalizeTypeName(ownerType)))
+            {
+                lock (gate)
+                {
+                    if (membersByOwner.TryGetValue(owner, out var members) &&
+                        members.Any(item => string.Equals(item.Name, memberName, StringComparison.OrdinalIgnoreCase)))
+                        return true;
+                }
+            }
+            return false;
+        }
+
         public IReadOnlyList<SourceSymbol> FindReferences(string name)
         {
             if (string.IsNullOrWhiteSpace(name))

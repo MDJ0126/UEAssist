@@ -123,6 +123,26 @@ namespace UEAssist.Extension
                 tags.Add(new TagSpan<IErrorTag>(span,
                     new ErrorTag(PredefinedErrorTypeNames.SyntaxError, issue.Message + " (UEAssist)")));
             }
+            var snapshotText = snapshot.GetText();
+            foreach (var issue in CppScopeAnalyzer.FindOutOfScopeUses(snapshotText))
+            {
+                var owner = CppExpressionContext.FindEnclosingFunctionOwner(snapshotText, issue.Start);
+                if (!string.IsNullOrWhiteSpace(owner) && indexService.Index.ContainsMember(owner, issue.Name)) continue;
+                var span = new SnapshotSpan(snapshot, issue.Start, issue.Length);
+                tags.Add(new TagSpan<IErrorTag>(span,
+                    new ErrorTag(PredefinedErrorTypeNames.SyntaxError, issue.Message + " (UEAssist)")));
+            }
+            var declaredNames = CppScopeAnalyzer.FindDeclaredNames(snapshotText);
+            foreach (var issue in CppScopeAnalyzer.FindBareArgumentUses(snapshotText))
+            {
+                if (CppKeywords.Contains(issue.Name) || declaredNames.Contains(issue.Name) ||
+                    indexService.Index.ContainsSymbol(issue.Name) || indexService.ContainsLiveSymbol(issue.Name)) continue;
+                var owner = CppExpressionContext.FindEnclosingFunctionOwner(snapshotText, issue.Start);
+                if (!string.IsNullOrWhiteSpace(owner) && indexService.Index.ContainsMember(owner, issue.Name)) continue;
+                var span = new SnapshotSpan(snapshot, issue.Start, issue.Length);
+                tags.Add(new TagSpan<IErrorTag>(span,
+                    new ErrorTag(PredefinedErrorTypeNames.SyntaxError, issue.Message + " (UEAssist)")));
+            }
             cachedSnapshot = snapshot;
             cachedTags = tags;
         }
