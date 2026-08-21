@@ -68,6 +68,13 @@ namespace UEAssist.Extension
             var isDeletion = IsDeletion(commandGroup, commandId);
             var isExplicitCompletion = IsExplicitCompletion(commandGroup, commandId);
             var shouldTrigger = hasTypedCharacter && ShouldTrigger(typedCharacter);
+            var isNumericPunctuation = hasTypedCharacter && IsNumericLiteralPunctuation(typedCharacter);
+            if (isNumericPunctuation)
+            {
+                // A native C++ completion session treats '.' as a commit character.
+                // Close every session before "50." can commit an unrelated symbol.
+                DismissAllCompletionSessions();
+            }
             // A standalone preview must never consume punctuation or whitespace as a
             // completion commit. Dismiss it before Visual Studio processes the key.
             if (hasTypedCharacter && ShouldDismissPreviewBeforeInput(typedCharacter))
@@ -79,11 +86,12 @@ namespace UEAssist.Extension
             {
                 RefreshUEAssistSessions();
             }
-            if (ErrorHandler.Succeeded(result) && hasTypedCharacter && ShouldInvokeLiveCompletion(typedCharacter))
+            if (ErrorHandler.Succeeded(result) && hasTypedCharacter && !isNumericPunctuation && ShouldInvokeLiveCompletion(typedCharacter))
             {
-                // TYPECHAR must return before the C++ editor will honor another
-                // SHOWMEMBERLIST command. Run the exact Ctrl+Space path next turn.
-                QueueShowMemberList();
+                // Refresh on the next UI turn without repeatedly invoking the native
+                // SHOWMEMBERLIST command. The latter displays VC++'s loading popup on
+                // top of the UEAssist preview while IntelliSense is still indexing.
+                QueueCompletionRefresh();
                 return result;
             }
             if (ErrorHandler.Succeeded(result) && shouldTrigger && !broker.IsCompletionActive(view))
@@ -188,13 +196,45 @@ namespace UEAssist.Extension
             return char.IsLetter(character) || character == '_';
         }
 
-        private static bool ShouldInvokeLiveCompletion(char character)
+        private bool ShouldInvokeLiveCompletion(char character)
         {
-            return char.IsLetterOrDigit(character) || character == '_' ||
-                   character == '.' || character == ':' || character == '>';
+            if (char.IsDigit(character))
+            {
+                return HasIdentifierCompletionContextAtCaret();
+            }
+            if (char.IsLetter(character) || character == '_' || character == '.' || character == '>')
+            {
+                return true;
+            }
+
+            if (character != ':') return false;
+            var caret = view.Caret.Position.BufferPosition;
+            return caret.Position >= 2 && caret.Snapshot[caret.Position - 2] == ':';
         }
 
-        private void QueueShowMemberList()
+        private bool HasIdentifierCompletionContextAtCaret()
+        {
+            var caret = view.Caret.Position.BufferPosition;
+            var position = caret.Position;
+            while (position > 0)
+            {
+                var character = caret.Snapshot[position - 1];
+                if (!char.IsLetterOrDigit(character) && character != '_') break;
+                position--;
+            }
+            return position < caret.Position &&
+                   (char.IsLetter(caret.Snapshot[position]) || caret.Snapshot[position] == '_');
+        }
+
+        private bool IsNumericLiteralPunctuation(char character)
+        {
+            if (character != '.') return false;
+            var caret = view.Caret.Position.BufferPosition;
+            if (caret.Position == 0) return false;
+            return char.IsDigit(caret.Snapshot[caret.Position - 1]);
+        }
+
+        private void QueueCompletionRefresh()
         {
             if (liveCompletionQueued) return;
             liveCompletionQueued = true;
@@ -205,7 +245,7 @@ namespace UEAssist.Extension
                 try
                 {
                     ThreadHelper.ThrowIfNotOnUIThread();
-                    InvokeShowMemberList();
+                    InvokeCompletionRefresh();
                 }
                 catch (Exception)
                 {
@@ -215,22 +255,29 @@ namespace UEAssist.Extension
 #pragma warning restore VSTHRD001
         }
 
-        private void InvokeShowMemberList()
+        private void InvokeCompletionRefresh()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            var group = VSConstants.VSStd2K;
-            Next.Exec(
-                ref group,
-                (uint)VSConstants.VSStd2KCmdID.SHOWMEMBERLIST,
-                (uint)OLECMDEXECOPT.OLECMDEXECOPT_DODEFAULT,
-                IntPtr.Zero,
-                IntPtr.Zero);
+            var ueAssistSessions = broker.GetSessions(view)
+                .Where(session => session.Properties.ContainsProperty(UEAssistCompletionSessionState.Marker))
+                .ToArray();
+            if (ueAssistSessions.Length > 0)
+            {
+                // Filtering can only remove items from the list created for the
+                // first character. Recreate our standalone safe session so a more
+                // specific prefix can bring GetWorld/GetPawn and similar symbols in.
+                foreach (var session in ueAssistSessions) session.Dismiss();
+                broker.TriggerCompletion(view);
+                return;
+            }
 
-            // Match the remainder of the real Ctrl+Space path in Exec(): the C++
-            // command may return without creating a session after '.', '->', or '::'.
             if (!broker.IsCompletionActive(view))
             {
                 broker.TriggerCompletion(view);
+            }
+            else
+            {
+                RefreshUEAssistSessions();
             }
         }
 
@@ -247,6 +294,14 @@ namespace UEAssist.Extension
                 {
                     session.Dismiss();
                 }
+            }
+        }
+
+        private void DismissAllCompletionSessions()
+        {
+            foreach (var session in broker.GetSessions(view).ToArray())
+            {
+                session.Dismiss();
             }
         }
 

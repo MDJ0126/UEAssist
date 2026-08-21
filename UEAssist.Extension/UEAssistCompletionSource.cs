@@ -30,6 +30,8 @@ namespace UEAssist.Extension
             if (DocumentFactory.TryGetTextDocument(textBuffer, out var document))
             {
                 IndexService.InitializeFromDocument(document.FilePath);
+                textBuffer.Properties.GetOrCreateSingletonProperty(() =>
+                    new LiveDocumentTracker(textBuffer, document.FilePath, IndexService));
             }
             return textBuffer.Properties.GetOrCreateSingletonProperty(() => new UEAssistCompletionSource(textBuffer, IndexService));
         }
@@ -61,6 +63,7 @@ namespace UEAssist.Extension
             var beforeCaret = snapshot.GetText(line.Start.Position, point.Value.Position - line.Start.Position);
             var memberMatch = MemberPattern.Match(beforeCaret);
             var includeMatch = IncludeContext.Match(beforeCaret);
+            var currentOwner = FindEnclosingOwner(snapshot, point.Value.Position);
             string prefix;
             IReadOnlyList<IndexedSymbol> candidates;
             var hasResolvedMemberContext = false;
@@ -81,10 +84,10 @@ namespace UEAssist.Extension
                 var typeName = memberMatch.Groups["operator"].Value == "::"
                     ? receiver
                     : receiver == "Super"
-                    ? string.Empty
+                    ? indexService.Index.ResolveBaseType(currentOwner)
                     : memberMatch.Groups["call"].Success
-                        ? indexService.Index.ResolveReturnType(receiver)
-                        : indexService.Index.ResolveVariableType(receiver);
+                        ? indexService.Index.ResolveReturnType(currentOwner, receiver)
+                        : indexService.Index.ResolveVariableType(currentOwner, receiver);
                 hasResolvedMemberContext = !string.IsNullOrWhiteSpace(typeName);
                 candidates = hasResolvedMemberContext
                     ? indexService.Index.CompleteMembers(NormalizeType(typeName), prefix, 100)
@@ -95,8 +98,13 @@ namespace UEAssist.Extension
             else
             {
                 prefix = GetIdentifierPrefix(beforeCaret);
-                candidates = indexService.Index.Complete(prefix, 100);
+                candidates = MergeCandidates(
+                    indexService.Index.Complete(prefix, 200),
+                    indexService.CompleteLive(prefix, 200));
             }
+
+
+            candidates = RankByRecentUse(candidates, snapshot, point.Value.Position).Take(100).ToArray();
 
             if (candidates.Count == 0) return;
             var builtInSet = completionSets.FirstOrDefault(set =>
@@ -109,11 +117,22 @@ namespace UEAssist.Extension
                 var builtInNames = new HashSet<string>(builtInSet.Completions.Select(item => item.InsertionText), StringComparer.OrdinalIgnoreCase);
                 var overlap = candidates.Count(candidate => builtInNames.Contains(candidate.Name));
                 if (hasResolvedMemberContext) indexService.ReportIntelliSenseEvidence(overlap, candidates.Count);
-                if (indexService.IntelliSenseReady) return;
-
                 var previewItems = candidates.Where(candidate => !builtInNames.Contains(candidate.Name)).Select(CreateCompletion).ToList();
+                if (indexService.IntelliSenseReady && previewItems.Count == 0) return;
                 if (previewItems.Count == 0) return;
-                completionSets.Insert(0, new PreviewCompletionSet(applicable, previewItems));
+
+                // Never display VCCompletionSet and UEAssist CompletionSet together.
+                // Visual Studio 17.14 can crash inside VCCompletionSet's highlight
+                // callback while WPF realizes items from the mixed session.
+                var combined = candidates.Select(CreateCompletion).ToList();
+                foreach (var native in builtInSet.Completions)
+                {
+                    if (combined.Any(item => string.Equals(item.InsertionText, native.InsertionText, StringComparison.OrdinalIgnoreCase))) continue;
+                    combined.Add(CloneCompletion(native));
+                    if (combined.Count >= 200) break;
+                }
+                completionSets.Clear();
+                completionSets.Add(new PreviewCompletionSet(applicable, combined));
                 MarkUEAssistSession(session);
                 return;
             }
@@ -141,6 +160,16 @@ namespace UEAssist.Extension
                 "UEAssist");
         }
 
+        private static Completion CloneCompletion(Completion completion)
+        {
+            return new Completion(
+                completion.DisplayText,
+                completion.InsertionText,
+                completion.Description,
+                completion.IconSource,
+                completion.IconAutomationText);
+        }
+
         private static string GetIdentifierPrefix(string text)
         {
             var index = text.Length;
@@ -150,7 +179,32 @@ namespace UEAssist.Extension
 
         private static string NormalizeType(string typeName)
         {
-            return Regex.Replace(typeName ?? string.Empty, @"\bconst\b|[*&\s]", string.Empty);
+            return PersistentSymbolIndex.NormalizeTypeName(typeName);
+        }
+
+        private static string FindEnclosingOwner(ITextSnapshot snapshot, int caretPosition)
+        {
+            return CppExpressionContext.FindEnclosingFunctionOwner(snapshot.GetText(), caretPosition);
+        }
+
+        private static IReadOnlyList<IndexedSymbol> MergeCandidates(params IReadOnlyList<IndexedSymbol>[] sources)
+        {
+            return sources.SelectMany(items => items ?? Array.Empty<IndexedSymbol>())
+                .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.Last())
+                .ToArray();
+        }
+
+        private static IEnumerable<IndexedSymbol> RankByRecentUse(
+            IReadOnlyList<IndexedSymbol> candidates, ITextSnapshot snapshot, int caretPosition)
+        {
+            if (candidates == null || candidates.Count == 0) return Array.Empty<IndexedSymbol>();
+            var text = snapshot.GetText(0, Math.Max(0, Math.Min(caretPosition, snapshot.Length)));
+            return candidates
+                .Select(item => new { Item = item, LastUse = text.LastIndexOf(item.Name, StringComparison.OrdinalIgnoreCase) })
+                .OrderByDescending(value => value.LastUse)
+                .ThenBy(value => value.Item.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(value => value.Item);
         }
 
         private static void MarkUEAssistSession(ICompletionSession session)

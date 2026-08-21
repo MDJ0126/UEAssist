@@ -1,10 +1,12 @@
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using UEAssist.Indexing;
 
@@ -18,6 +20,14 @@ namespace UEAssist.Extension
         private Task buildTask;
         private string initializedProjectRoot;
         private int intelliSenseEvidence;
+        private readonly Dictionary<string, IReadOnlyList<IndexedSymbol>> liveDocuments =
+            new Dictionary<string, IReadOnlyList<IndexedSymbol>>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Regex LiveTypePattern = new Regex(
+            @"\b(?:class|struct)\s+(?:\w+_API\s+)?(?<name>[A-Za-z_]\w*)", RegexOptions.Compiled);
+        private static readonly Regex LiveVariablePattern = new Regex(
+            @"\b(?<type>(?:const\s+)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?\s*[*&]?)\s+(?<name>[A-Za-z_]\w*)\s*(?=[=;,\[])" , RegexOptions.Compiled);
+        private static readonly Regex LiveFunctionPattern = new Regex(
+            @"\b(?<type>[A-Za-z_]\w*(?:\s*<[^>]+>)?[*&]?)\s+(?<name>[A-Za-z_]\w*)\s*\(", RegexOptions.Compiled);
 
         public PersistentSymbolIndex Index { get; } = new PersistentSymbolIndex();
         public bool IsBuilding { get; private set; }
@@ -26,6 +36,49 @@ namespace UEAssist.Extension
         public event EventHandler IntelliSenseAvailabilityChanged;
         public event EventHandler<IndexingStatusEventArgs> IndexingStatusChanged;
         public bool IntelliSenseReady { get; private set; }
+
+        public void UpdateLiveDocument(string filePath, string text)
+        {
+            if (string.IsNullOrWhiteSpace(filePath)) return;
+            var found = new List<IndexedSymbol>();
+            foreach (Match match in LiveTypePattern.Matches(text ?? string.Empty))
+                found.Add(new IndexedSymbol(match.Groups["name"].Value, UEAssist.Core.SymbolKind.Type, filePath, 0, match.Index));
+            foreach (Match match in LiveVariablePattern.Matches(text ?? string.Empty))
+                found.Add(new IndexedSymbol(match.Groups["name"].Value, UEAssist.Core.SymbolKind.Variable, filePath, 0, match.Index,
+                    valueType: match.Groups["type"].Value));
+            foreach (Match match in LiveFunctionPattern.Matches(text ?? string.Empty))
+                found.Add(new IndexedSymbol(match.Groups["name"].Value, UEAssist.Core.SymbolKind.Function, filePath, 0, match.Index,
+                    valueType: match.Groups["type"].Value));
+            lock (gate)
+            {
+                liveDocuments[filePath] = found
+                    .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First()).ToArray();
+            }
+        }
+
+        public IReadOnlyList<IndexedSymbol> CompleteLive(string prefix, int limit = 100)
+        {
+            lock (gate)
+            {
+                return liveDocuments.Values.SelectMany(items => items)
+                    .Where(item => item.Name.StartsWith(prefix ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                    .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .Take(limit).ToArray();
+            }
+        }
+
+        public bool ContainsLiveSymbol(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            lock (gate)
+            {
+                return liveDocuments.Values.SelectMany(items => items)
+                    .Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+            }
+        }
 
         public void Initialize(string unrealProjectPath)
         {

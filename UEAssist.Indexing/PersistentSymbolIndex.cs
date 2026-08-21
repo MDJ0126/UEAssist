@@ -55,6 +55,8 @@ namespace UEAssist.Indexing
         private Dictionary<string, string> typeNamesByInsensitiveName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> variableTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> returnTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> variableTypesByOwnerAndName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> returnTypesByOwnerAndName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> baseTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, List<IndexedSymbol>> definitionsByName = new Dictionary<string, List<IndexedSymbol>>(StringComparer.OrdinalIgnoreCase);
         private List<IndexedSymbol> specifierSymbols = new List<IndexedSymbol>();
@@ -98,7 +100,8 @@ namespace UEAssist.Indexing
             {
                 Type("UObject"), Type("AActor", "UObject"), Type("UActorComponent", "UObject"),
                 Type("USceneComponent", "UActorComponent"), Type("UWorld", "UObject"),
-                Type("UGameplayStatics", "UObject"), Type("FVector"), Type("FRotator"),
+                Type("UGameplayStatics", "UObject"), Type("UInputMappingContext", "UObject"),
+                Type("UInputAction", "UObject"), Type("FVector"), Type("FRotator"),
                 Macro("UCLASS"), Macro("USTRUCT"), Macro("UENUM"), Macro("UINTERFACE"),
                 Macro("UFUNCTION"), Macro("UPROPERTY"), Macro("UMETA"), Macro("UPARAM"),
                 Macro("GENERATED_BODY"), Macro("GENERATED_UCLASS_BODY"), Macro("GENERATED_USTRUCT_BODY"),
@@ -112,6 +115,7 @@ namespace UEAssist.Indexing
                 Header("CoreMinimal.h"), Header("GameFramework/Actor.h"), Header("GameFramework/Pawn.h"),
                 Header("Camera/CameraComponent.h"), Header("GameFramework/SpringArmComponent.h"),
                 Header("Components/CapsuleComponent.h"), Header("Components/StaticMeshComponent.h"),
+                Header("InputMappingContext.h"), Header("InputAction.h"),
                 Function("AActor", "Destroy", "bool"), Function("AActor", "SetLifeSpan", "void"),
                 Function("AActor", "GetWorld", "UWorld*"), Function("AActor", "GetActorLocation", "FVector"),
                 Function("AActor", "SetActorLocation", "bool"), Function("AActor", "GetActorRotation", "FRotator"),
@@ -232,17 +236,18 @@ namespace UEAssist.Indexing
                 {
                     if (!item.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || !names.Add(item.Name)) continue;
                     results.Add(item);
-                    if (results.Count >= limit) break;
                 }
                 return results
                     .OrderBy(item => CompletionMatchRank(item.Name, prefix))
                     .ThenBy(item => item.Name, StringComparer.Ordinal)
+                    .Take(limit)
                     .ToArray();
             }
         }
 
         public IReadOnlyList<IndexedSymbol> CompleteMembers(string typeName, string prefix, int limit = 200)
         {
+            typeName = NormalizeTypeName(typeName);
             if (string.IsNullOrWhiteSpace(typeName))
             {
                 return Array.Empty<IndexedSymbol>();
@@ -271,12 +276,40 @@ namespace UEAssist.Indexing
             }
         }
 
+        public static string NormalizeTypeName(string typeName)
+        {
+            var normalized = Regex.Replace(typeName ?? string.Empty, @"\b(?:const|class|struct)\b|[*&\s]", string.Empty);
+            var wrappers = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "TObjectPtr", "TWeakObjectPtr", "TSoftObjectPtr", "TSharedPtr", "TSharedRef", "TUniquePtr"
+            };
+            while (true)
+            {
+                var match = Regex.Match(normalized, @"^(?<wrapper>[A-Za-z_]\w*)<(?<inner>[^,>]+)(?:,[^>]*)?>$");
+                if (!match.Success || !wrappers.Contains(match.Groups["wrapper"].Value)) return normalized;
+                normalized = Regex.Replace(match.Groups["inner"].Value, @"\b(?:const|class|struct)\b|[*&\s]", string.Empty);
+            }
+        }
+
         public string ResolveVariableType(string variableName)
         {
             lock (gate)
             {
                 return variableTypesByName.TryGetValue(variableName, out var typeName) ? typeName : null;
             }
+        }
+
+        public string ResolveVariableType(string ownerType, string variableName)
+        {
+            foreach (var owner in GetTypeHierarchy(NormalizeTypeName(ownerType)))
+            {
+                lock (gate)
+                {
+                    if (variableTypesByOwnerAndName.TryGetValue(MemberKey(owner, variableName), out var typeName))
+                        return typeName;
+                }
+            }
+            return ResolveVariableType(variableName);
         }
 
         public string ResolveReturnType(string functionName)
@@ -299,6 +332,19 @@ namespace UEAssist.Indexing
             }
         }
 
+        public string ResolveReturnType(string ownerType, string functionName)
+        {
+            foreach (var owner in GetTypeHierarchy(NormalizeTypeName(ownerType)))
+            {
+                lock (gate)
+                {
+                    if (returnTypesByOwnerAndName.TryGetValue(MemberKey(owner, functionName), out var typeName))
+                        return typeName;
+                }
+            }
+            return ResolveReturnType(functionName);
+        }
+
         public string FindCorrectTypeCasing(string name)
         {
             lock (gate)
@@ -306,6 +352,14 @@ namespace UEAssist.Indexing
                 return typeNamesByInsensitiveName.TryGetValue(name, out var correct) && !correct.Equals(name, StringComparison.Ordinal)
                     ? correct
                     : null;
+            }
+        }
+
+        public string ResolveBaseType(string typeName)
+        {
+            lock (gate)
+            {
+                return baseTypesByName.TryGetValue(NormalizeTypeName(typeName), out var baseType) ? baseType : null;
             }
         }
 
@@ -366,7 +420,7 @@ namespace UEAssist.Indexing
             List<string> lines;
             lock (gate)
             {
-                lines = new List<string> { "UEASSIST3", Encode(ProjectRoot), Encode(EngineRoot), LastUpdatedUtc.Ticks.ToString() };
+                lines = new List<string> { "UEASSIST4", Encode(ProjectRoot), Encode(EngineRoot), LastUpdatedUtc.Ticks.ToString() };
                 lines.AddRange(symbols.Select(item => string.Join("\t", Encode(item.Name), (int)item.Kind, Encode(item.FilePath), item.Line, item.Column, Encode(item.OwnerType), Encode(item.ValueType), Encode(item.BaseType))));
             }
             var temporaryPath = cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -388,7 +442,7 @@ namespace UEAssist.Indexing
             try
             {
                 var lines = File.ReadAllLines(cachePath, Encoding.UTF8);
-                if (lines.Length < 4 || lines[0] != "UEASSIST3") return false;
+                if (lines.Length < 4 || lines[0] != "UEASSIST4") return false;
                 var loaded = new List<IndexedSymbol>();
                 foreach (var line in lines.Skip(4))
                 {
@@ -435,9 +489,10 @@ namespace UEAssist.Indexing
             var typeScopes = new Stack<TypeScope>();
             string pendingType = null;
             var braceDepth = 0;
+            var insideBlockComment = false;
             for (var index = 0; index < lines.Length; index++)
             {
-                var line = StripLineComment(lines[index]);
+                var line = StripComments(lines[index], ref insideBlockComment);
                 var typeMatch = TypePattern.Match(line);
                 if (typeMatch.Success)
                 {
@@ -527,12 +582,8 @@ namespace UEAssist.Indexing
 
         private static IEnumerable<string> EnumerateEngineApiFiles(string engineRoot, ISet<string> modules)
         {
-            var source = Path.Combine(engineRoot, "Engine", "Source", "Runtime");
-            if (!Directory.Exists(source)) yield break;
-            foreach (var module in modules)
+            foreach (var moduleRoot in EnumerateEngineModuleRoots(engineRoot, modules))
             {
-                var moduleRoot = Path.Combine(source, module);
-                if (!Directory.Exists(moduleRoot)) continue;
                 foreach (var apiDirectory in new[] { Path.Combine(moduleRoot, "Public"), Path.Combine(moduleRoot, "Classes") })
                 {
                     if (!Directory.Exists(apiDirectory)) continue;
@@ -541,6 +592,42 @@ namespace UEAssist.Indexing
                         if (!file.EndsWith(".cpp", StringComparison.OrdinalIgnoreCase)) yield return file;
                     }
                 }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateEngineModuleRoots(string engineRoot, ISet<string> modules)
+        {
+            var runtimeRoot = Path.Combine(engineRoot, "Engine", "Source", "Runtime");
+            foreach (var module in modules)
+            {
+                var runtimeModule = Path.Combine(runtimeRoot, module);
+                if (Directory.Exists(runtimeModule)) yield return runtimeModule;
+            }
+
+            // Plugin APIs (for example Enhanced Input) live below
+            // Engine/Plugins/.../Source/<Module>, not Engine/Source/Runtime.
+            // Walk directories only, stop below a matched module, and parse just
+            // its Public/Classes headers so the background scan remains bounded.
+            var pluginsRoot = Path.Combine(engineRoot, "Engine", "Plugins");
+            if (!Directory.Exists(pluginsRoot)) yield break;
+            var pending = new Stack<string>();
+            pending.Push(pluginsRoot);
+            while (pending.Count > 0)
+            {
+                var directory = pending.Pop();
+                var parent = Path.GetDirectoryName(directory);
+                if (modules.Contains(Path.GetFileName(directory)) &&
+                    string.Equals(Path.GetFileName(parent), "Source", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return directory;
+                    continue;
+                }
+
+                string[] children;
+                try { children = Directory.GetDirectories(directory); }
+                catch (IOException) { continue; }
+                catch (UnauthorizedAccessException) { continue; }
+                foreach (var child in children) pending.Push(child);
             }
         }
 
@@ -582,6 +669,33 @@ namespace UEAssist.Indexing
             return comment < 0 ? line : line.Substring(0, comment);
         }
 
+        private static string StripComments(string line, ref bool insideBlockComment)
+        {
+            var result = new StringBuilder(line?.Length ?? 0);
+            var index = 0;
+            while (index < (line?.Length ?? 0))
+            {
+                if (insideBlockComment)
+                {
+                    var end = line.IndexOf("*/", index, StringComparison.Ordinal);
+                    if (end < 0) return result.ToString();
+                    insideBlockComment = false;
+                    index = end + 2;
+                    continue;
+                }
+                if (index + 1 < line.Length && line[index] == '/' && line[index + 1] == '/') break;
+                if (index + 1 < line.Length && line[index] == '/' && line[index + 1] == '*')
+                {
+                    insideBlockComment = true;
+                    index += 2;
+                    continue;
+                }
+                result.Append(line[index]);
+                index++;
+            }
+            return result.ToString();
+        }
+
         private static bool IsControlKeyword(string name)
         {
             return name == "if" || name == "for" || name == "while" || name == "switch" || name == "catch";
@@ -615,6 +729,8 @@ namespace UEAssist.Indexing
                 typeNamesByInsensitiveName = lookups.TypeNamesByInsensitiveName;
                 variableTypesByName = lookups.VariableTypesByName;
                 returnTypesByName = lookups.ReturnTypesByName;
+                variableTypesByOwnerAndName = lookups.VariableTypesByOwnerAndName;
+                returnTypesByOwnerAndName = lookups.ReturnTypesByOwnerAndName;
                 baseTypesByName = lookups.BaseTypesByName;
                 definitionsByName = lookups.DefinitionsByName;
                 specifierSymbols = lookups.Specifiers;
@@ -659,21 +775,26 @@ namespace UEAssist.Indexing
                 .Where(item => item.Kind == SymbolKind.Variable && !string.IsNullOrEmpty(item.ValueType))
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First().ValueType, StringComparer.OrdinalIgnoreCase);
+            var ownerVariableTypes = sourceSymbols
+                .Where(item => item.Kind == SymbolKind.Variable && !string.IsNullOrEmpty(item.OwnerType) && !string.IsNullOrEmpty(item.ValueType))
+                .GroupBy(item => MemberKey(item.OwnerType, item.Name), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().ValueType, StringComparer.OrdinalIgnoreCase);
             var returnTypes = sourceSymbols
                 .Where(item => item.Kind == SymbolKind.Function && !string.IsNullOrEmpty(item.ValueType))
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
-                    group => group
-                        .OrderBy(item => string.Equals(item.ValueType, item.OwnerType, StringComparison.Ordinal) ? 1 : 0)
-                        .ThenBy(item => IsHeader(item.FilePath) ? 0 : 1)
-                        .ThenBy(item => item.FilePath, StringComparer.OrdinalIgnoreCase)
-                        .First().ValueType,
+                    group => SelectReturnType(group),
                     StringComparer.OrdinalIgnoreCase);
+            var ownerReturnTypes = sourceSymbols
+                .Where(item => item.Kind == SymbolKind.Function && !string.IsNullOrEmpty(item.OwnerType) && !string.IsNullOrEmpty(item.ValueType))
+                .GroupBy(item => MemberKey(item.OwnerType, item.Name), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => SelectReturnType(group), StringComparer.OrdinalIgnoreCase);
             var baseTypes = sourceSymbols
                 .Where(item => item.Kind == SymbolKind.Type && !string.IsNullOrEmpty(item.BaseType))
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.First().BaseType, StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(group => group.Key, group => group.Select(item => item.BaseType)
+                    .First(value => !string.IsNullOrWhiteSpace(value)), StringComparer.OrdinalIgnoreCase);
             var definitions = sourceSymbols
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
@@ -690,7 +811,30 @@ namespace UEAssist.Indexing
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .Select(Header)
                 .ToList();
-            return new LookupTables(completions, members, typeNames, variableTypes, returnTypes, baseTypes, definitions, specifiers, headers);
+            return new LookupTables(completions, members, typeNames, variableTypes, returnTypes,
+                ownerVariableTypes, ownerReturnTypes, baseTypes, definitions, specifiers, headers);
+        }
+
+        private static string SelectReturnType(IEnumerable<IndexedSymbol> candidates)
+        {
+            return candidates
+                .OrderBy(item => IsTemplatePlaceholderType(item.ValueType) ? 1 : 0)
+                .ThenBy(item => string.Equals(item.ValueType, item.OwnerType, StringComparison.Ordinal) ? 1 : 0)
+                .ThenBy(item => IsHeader(item.FilePath) ? 0 : 1)
+                .ThenBy(item => item.FilePath, StringComparer.OrdinalIgnoreCase)
+                .Select(item => item.ValueType)
+                .First();
+        }
+
+        private static bool IsTemplatePlaceholderType(string typeName)
+        {
+            var normalized = NormalizeTypeName(typeName);
+            return normalized == "T" || Regex.IsMatch(normalized, @"^T[A-Z][A-Za-z0-9_]*$");
+        }
+
+        private static string MemberKey(string ownerType, string memberName)
+        {
+            return (ownerType ?? string.Empty) + "\0" + (memberName ?? string.Empty);
         }
 
         private sealed class LookupTables
@@ -701,6 +845,8 @@ namespace UEAssist.Indexing
                 Dictionary<string, string> typeNames,
                 Dictionary<string, string> variableTypes,
                 Dictionary<string, string> returnTypes,
+                Dictionary<string, string> variableTypesByOwnerAndName,
+                Dictionary<string, string> returnTypesByOwnerAndName,
                 Dictionary<string, string> baseTypes,
                 Dictionary<string, List<IndexedSymbol>> definitions,
                 List<IndexedSymbol> specifiers,
@@ -711,6 +857,8 @@ namespace UEAssist.Indexing
                 TypeNamesByInsensitiveName = typeNames;
                 VariableTypesByName = variableTypes;
                 ReturnTypesByName = returnTypes;
+                VariableTypesByOwnerAndName = variableTypesByOwnerAndName;
+                ReturnTypesByOwnerAndName = returnTypesByOwnerAndName;
                 BaseTypesByName = baseTypes;
                 DefinitionsByName = definitions;
                 Specifiers = specifiers;
@@ -722,6 +870,8 @@ namespace UEAssist.Indexing
             public Dictionary<string, string> TypeNamesByInsensitiveName { get; }
             public Dictionary<string, string> VariableTypesByName { get; }
             public Dictionary<string, string> ReturnTypesByName { get; }
+            public Dictionary<string, string> VariableTypesByOwnerAndName { get; }
+            public Dictionary<string, string> ReturnTypesByOwnerAndName { get; }
             public Dictionary<string, string> BaseTypesByName { get; }
             public Dictionary<string, List<IndexedSymbol>> DefinitionsByName { get; }
             public List<IndexedSymbol> Specifiers { get; }

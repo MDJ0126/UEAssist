@@ -30,6 +30,9 @@ namespace UEAssist.Extension
     {
         private static readonly Regex IdentifierPattern = new Regex(@"\b[AUFTEI][A-Z][A-Za-z0-9_]*\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex StandaloneIdentifierPattern = new Regex(@"^\s*(?<name>[A-Za-z_]\w*)\s*;?\s*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex ThisClassMemberPointerPattern = new Regex(
+            @"&\s*ThisClass\s*::\s*(?<name>[A-Za-z_]\w*)\s*(?=[,);])",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly HashSet<string> CppKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "alignas", "alignof", "asm", "auto", "bool", "break", "case", "catch", "char", "class",
@@ -101,6 +104,17 @@ namespace UEAssist.Extension
                         tags.Add(new TagSpan<IErrorTag>(span,
                             new ErrorTag(PredefinedErrorTypeNames.SyntaxError, $"정의되지 않은 식별자 '{name}'입니다. (UEAssist)")));
                     }
+                }
+
+                foreach (Match memberPointer in ThisClassMemberPointerPattern.Matches(text))
+                {
+                    var group = memberPointer.Groups["name"];
+                    var name = group.Value;
+                    if (indexService.Index.ContainsSymbol(name) || indexService.ContainsLiveSymbol(name)) continue;
+                    var span = new SnapshotSpan(snapshot, line.Start.Position + group.Index, group.Length);
+                    tags.Add(new TagSpan<IErrorTag>(span,
+                        new ErrorTag(PredefinedErrorTypeNames.SyntaxError,
+                            $"ThisClass에 '{name}' 멤버가 정의되어 있지 않습니다. (UEAssist)")));
                 }
             }
             foreach (var issue in CppDelimiterParser.FindDefiniteIssues(snapshot.GetText()))

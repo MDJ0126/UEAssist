@@ -112,6 +112,8 @@ namespace UEAssist.Core.Tests
             Assert.Contains(index.Complete("U"), item => item.Name == "UGameplayStatics");
             Assert.Contains(index.Complete("UGame"), item => item.Name == "UGameplayStatics");
             Assert.Contains(index.Complete("UGameplaySta"), item => item.Name == "UGameplayStatics");
+            Assert.Contains(index.Complete("UInputMapping"), item => item.Name == "UInputMappingContext" && item.Kind == SymbolKind.Type);
+            Assert.Contains(index.Complete("uinputaction"), item => item.Name == "UInputAction" && item.Kind == SymbolKind.Type);
             var macroMatches = index.Complete("UPROPERTY");
             Assert.Equal("UPROPERTY", macroMatches[0].Name);
             Assert.Equal(SymbolKind.Macro, macroMatches[0].Kind);
@@ -119,6 +121,88 @@ namespace UEAssist.Core.Tests
             Assert.Equal("VisibleAnywhere", index.CompleteSpecifiers("visible")[0].Name);
             Assert.Contains(index.CompleteSpecifiers("blueprintread"), item => item.Name == "BlueprintReadOnly");
             Assert.Equal("Camera/CameraComponent.h", index.CompleteHeaders("camera/cam")[0].Name);
+            Assert.Equal("InputMappingContext.h", index.CompleteHeaders("inputmapping")[0].Name);
+        }
+
+        [Fact]
+        public void BuildEngine_IndexesModulesStoredUnderEnginePlugins()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "UEAssistTests", Guid.NewGuid().ToString("N"));
+            var projectRoot = Path.Combine(root, "Project");
+            var engineRoot = Path.Combine(root, "UE_5");
+            try
+            {
+                Directory.CreateDirectory(projectRoot);
+                File.WriteAllText(Path.Combine(projectRoot, "Game.Build.cs"),
+                    "PublicDependencyModuleNames.AddRange(new string[] { \"Core\", \"EnhancedInput\" });");
+                var publicRoot = Path.Combine(engineRoot, "Engine", "Plugins", "EnhancedInput", "Source", "EnhancedInput", "Public");
+                Directory.CreateDirectory(publicRoot);
+                File.WriteAllText(Path.Combine(publicRoot, "InputAction.h"), "class UInputAction {};\n");
+
+                var index = new PersistentSymbolIndex();
+                index.BuildEngine(engineRoot, projectRoot);
+
+                Assert.Contains(index.Complete("UInputAction"), item => item.Name == "UInputAction");
+                Assert.Contains(index.CompleteHeaders("inputaction"), item => item.Name == "InputAction.h");
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
+        }
+
+        [Fact]
+        public void Complete_RanksAllMatchingTypesBeforeApplyingTheResultLimit()
+        {
+            var root = CreateProject();
+            try
+            {
+                var header = Path.Combine(root, "Source", "Game", "EnhancedTypes.h");
+                var distractors = string.Join("\n", Enumerable.Range(0, 120)
+                    .Select(index => "class uEnhanced" + index.ToString("D3") + " {};"));
+                File.WriteAllText(header,
+                    distractors + "\nclass UEnhancedInputLocalPlayerSubsystem {};\n");
+
+                var index = new PersistentSymbolIndex();
+                index.BuildProject(root);
+
+                Assert.Contains(index.Complete("UEnhanced", 100),
+                    item => item.Name == "UEnhancedInputLocalPlayerSubsystem");
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
+        }
+
+        [Fact]
+        public void CompleteMembers_UnwrapsUnrealAndCppPointerWrappers()
+        {
+            var root = CreateProject();
+            try
+            {
+                File.AppendAllText(Path.Combine(root, "Source", "Game", "MyActor.h"),
+                    "class APawn {\npublic:\n void AddMovementInput();\n};\n" +
+                    "class APlayerController;\n" +
+                    "class AController {\npublic:\n /** Returns the first of GetPawn() or GetSpectatorPawn(). */\n" +
+                    " TObjectPtr<APawn> GetPawn();\n template<typename T> T* GetPawn();\n};\n" +
+                    "class APlayerController : public AController {\n};\n" +
+                    "class AGameController : public APlayerController {\n};\n" +
+                    "class UUnrelated {\npublic:\n UObject* GetPawn();\n};\n");
+                var index = new PersistentSymbolIndex();
+                index.BuildProject(root);
+
+                Assert.Equal("TObjectPtr<APawn>", index.ResolveReturnType("AGameController", "GetPawn"));
+                Assert.Equal("UObject*", index.ResolveReturnType("UUnrelated", "GetPawn"));
+                Assert.Contains(index.CompleteMembers(index.ResolveReturnType("AGameController", "GetPawn"), "AddMovement"),
+                    item => item.Name == "AddMovementInput");
+                Assert.Equal("APawn", PersistentSymbolIndex.NormalizeTypeName("const TObjectPtr<class APawn>&"));
+                Assert.Equal("APawn", PersistentSymbolIndex.NormalizeTypeName("TWeakObjectPtr<APawn>"));
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
         }
 
         private static string CreateProject()

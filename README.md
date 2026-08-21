@@ -1,8 +1,10 @@
 # UEAssist for Visual Studio
 
-현재 개발 버전: `0.0.33`
+현재 개발 버전: `0.0.45`
 
 **Visual Studio용 Unreal Engine C++ 생산성 확장입니다.** IntelliSense가 준비되는 동안 Unreal 매크로와 의미 색상을 먼저 표시하고, 빠른 정의 탐색을 제공합니다.
+
+> **UEAssist는 누구나 무료로 사용할 수 있는 MIT 라이선스 오픈소스 도구입니다.**
 
 [![UEAssist 다운로드](https://img.shields.io/badge/UEAssist-VSIX%20다운로드-7B68EE?style=for-the-badge&logo=visualstudio)](https://github.com/MDJ0126/UEAssist/raw/refs/heads/main/UEAssist.vsix)
 
@@ -32,7 +34,8 @@
 - 디스크 캐시 기반 자동완성
   - 식별자 입력 시 자동 표시하며 `.`, `->`, `::` 직후에는 `Ctrl+Space`로 전체 멤버 표시
   - `Ctrl+Space`로 미리보기를 수동 호출
-  - 사용자 클래스의 멤버와 상속 멤버 후보 제공
+  - 현재 메서드의 소유 클래스와 상속 관계를 따라 멤버·함수 반환형 후보 제공
+  - 동일 함수명의 템플릿 오버로드를 구분하고 `TObjectPtr` 등 Unreal 포인터 래퍼의 내부 타입 조회
   - 멤버 후보를 접두사·부분 일치·문자 순서 연관성으로 정렬
   - 클래스·함수·변수 및 소유 타입 조회에서 대소문자를 구분하지 않음
   - Unreal 리플렉션 매크로는 정확한 대문자 이름과 매크로 아이콘으로 최우선 추천
